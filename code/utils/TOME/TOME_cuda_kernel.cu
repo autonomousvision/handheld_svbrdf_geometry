@@ -129,16 +129,20 @@ at::Tensor depth_reprojection_cuda(
   auto sentinel = 1e9;
   output_depth.fill_(sentinel);
 
-  AT_DISPATCH_SINGLE_FLOAT(input_depth.type(), "depth_reprojection_cuda", ([&] {
-    depth_reprojection_cuda_kernel<scalar_t><<<grid, block>>>(
-        input_depth.data<scalar_t>(),
-        output_depth.data<scalar_t>(),
-        cameras.data<scalar_t>(),
-        invKR.data<scalar_t>(),
-        camloc.data<scalar_t>(),
+  if(input_depth.type().scalarType() == at::ScalarType::Float) {
+    depth_reprojection_cuda_kernel<float><<<grid, block>>>(
+        input_depth.data<float>(),
+        output_depth.data<float>(),
+        cameras.data<float>(),
+        invKR.data<float>(),
+        camloc.data<float>(),
         B, K, inH, inW, outH, outW);
-  }));
-  
+  }
+  else{
+      AT_ERROR("depth_reprojection_cuda not implemented for '", input_depth.type().toString(), "'");
+  }
+
+
   output_depth.fmod_(sentinel);
 
   return output_depth;
@@ -268,16 +272,19 @@ at::Tensor depth_reprojection_bound_cuda(
   auto sentinel = 1e9;
   output_depth.fill_(sentinel);
 
-  AT_DISPATCH_SINGLE_FLOAT(input_depth.type(), "depth_reprojection_bound_cuda_kernel", ([&] {
-    depth_reprojection_bound_cuda_kernel<scalar_t><<<grid, block>>>(
-          input_depth.data<scalar_t>(),
-          output_depth.data<scalar_t>(),
-          cameras.data<scalar_t>(),
-          invKR.data<scalar_t>(),
-          camloc.data<scalar_t>(),
-          B, K, inH, inW, outH, outW, dmin, dmax, dstep);
-  }));
-  
+  if(input_depth.type().scalarType() == at::ScalarType::Float) {
+    depth_reprojection_bound_cuda_kernel<float><<<grid, block>>>(
+        input_depth.data<float>(),
+        output_depth.data<float>(),
+        cameras.data<float>(),
+        invKR.data<float>(),
+        camloc.data<float>(),
+        B, K, inH, inW, outH, outW, dmin, dmax, dstep);
+  }
+  else{
+      AT_ERROR("depth_reprojection_bound_cuda_kernel not implemented for '", input_depth.type().toString(), "'");
+  }
+
   output_depth.fmod_(sentinel);
   
   return output_depth;
@@ -440,28 +447,30 @@ std::vector<at::Tensor> depth_reprojection_splat_cuda(
   auto output_weights = at::zeros({B, K, outH, outW}, input_depth.type());
   auto output_visibilities = at::zeros({B, K, inH, inW}, input_depth.type());
 
-  AT_DISPATCH_SINGLE_FLOAT(input_depth.type(), "depth_reprojection_splat_cuda", ([&] {
-    depth_reprojection_splat_cuda_kernel<scalar_t><<<grid, block>>>(
-        input_depth.data<scalar_t>(),
-        output_depth.data<scalar_t>(),
-        output_weights.data<scalar_t>(),
-        cameras.data<scalar_t>(),
-        invKR.data<scalar_t>(),
-        camloc.data<scalar_t>(),
+  if(input_depth.type().scalarType() == at::ScalarType::Float) {
+    depth_reprojection_splat_cuda_kernel<float><<<grid, block>>>(
+        input_depth.data<float>(),
+        output_depth.data<float>(),
+        output_weights.data<float>(),
+        cameras.data<float>(),
+        invKR.data<float>(),
+        camloc.data<float>(),
         radius, zbuffer_scale,
         B, K, inH, inW, outH, outW);
     output_depth.div_(output_weights);
-    depth_reprojection_splat_visibilities_cuda_kernel<scalar_t><<<grid, block>>>(
-        input_depth.data<scalar_t>(),
-        output_depth.data<scalar_t>(),
-        output_visibilities.data<scalar_t>(),
-        cameras.data<scalar_t>(),
-        invKR.data<scalar_t>(),
-        camloc.data<scalar_t>(),
+    depth_reprojection_splat_visibilities_cuda_kernel<float><<<grid, block>>>(
+        input_depth.data<float>(),
+        output_depth.data<float>(),
+        output_visibilities.data<float>(),
+        cameras.data<float>(),
+        invKR.data<float>(),
+        camloc.data<float>(),
         radius, visibility_scale,
         B, K, inH, inW, outH, outW);
-  }));
-  
+  }
+  else{
+      AT_ERROR("depth_reprojection_splat_cuda not implemented for '", input_depth.type().toString(), "'");
+  }
 
   return {output_depth, output_weights, output_visibilities};
 }
@@ -486,151 +495,154 @@ at::Tensor permutohedral_filter_cuda(
   
     auto allocator = DeviceMemoryAllocator();
 
-    AT_DISPATCH_SINGLE_FLOAT(input.type(), "permutohedral_filter_cuda", ([&] {
+    if(input.type().scalarType() == at::ScalarType::Float) {
         if(pd == 5 && id == 3) {
-            auto lattice = PermutohedralLatticeGPU<scalar_t, 5, 4>(num_pixels, &allocator);
+            auto lattice = PermutohedralLatticeGPU<float, 5, 4>(num_pixels, &allocator);
             lattice.filter(
-                output.data<scalar_t>(),
-                input.data<scalar_t>(),
-                positions.data<scalar_t>(),
-                weights.data<scalar_t>(),
+                output.data<float>(),
+                input.data<float>(),
+                positions.data<float>(),
+                weights.data<float>(),
                 reverse
             );
         }
         else if(pd == 2 && id == 3) {
-            auto lattice = PermutohedralLatticeGPU<scalar_t, 2, 4>(num_pixels, &allocator);
+            auto lattice = PermutohedralLatticeGPU<float, 2, 4>(num_pixels, &allocator);
             lattice.filter(
-                output.data<scalar_t>(),
-                input.data<scalar_t>(),
-                positions.data<scalar_t>(),
-                weights.data<scalar_t>(),
+                output.data<float>(),
+                input.data<float>(),
+                positions.data<float>(),
+                weights.data<float>(),
                 reverse
             );
         }
         else if(pd == 2 && id == 2) {
-            auto lattice = PermutohedralLatticeGPU<scalar_t, 2, 3>(num_pixels, &allocator);
+            auto lattice = PermutohedralLatticeGPU<float, 2, 3>(num_pixels, &allocator);
             lattice.filter(
-                output.data<scalar_t>(),
-                input.data<scalar_t>(),
-                positions.data<scalar_t>(),
-                weights.data<scalar_t>(),
+                output.data<float>(),
+                input.data<float>(),
+                positions.data<float>(),
+                weights.data<float>(),
                 reverse
             );
         }
         else if(pd == 2 && id == 1) {
-            auto lattice = PermutohedralLatticeGPU<scalar_t, 2, 2>(num_pixels, &allocator);
+            auto lattice = PermutohedralLatticeGPU<float, 2, 2>(num_pixels, &allocator);
             lattice.filter(
-                output.data<scalar_t>(),
-                input.data<scalar_t>(),
-                positions.data<scalar_t>(),
-                weights.data<scalar_t>(),
+                output.data<float>(),
+                input.data<float>(),
+                positions.data<float>(),
+                weights.data<float>(),
                 reverse
             );
         }
         else if(pd == 3 && id == 1) {
-            auto lattice = PermutohedralLatticeGPU<scalar_t, 3, 2>(num_pixels, &allocator);
+            auto lattice = PermutohedralLatticeGPU<float, 3, 2>(num_pixels, &allocator);
             lattice.filter(
-                output.data<scalar_t>(),
-                input.data<scalar_t>(),
-                positions.data<scalar_t>(),
-                weights.data<scalar_t>(),
+                output.data<float>(),
+                input.data<float>(),
+                positions.data<float>(),
+                weights.data<float>(),
                 reverse
             );
         }
         else if(pd == 3 && id == 2) {
-            auto lattice = PermutohedralLatticeGPU<scalar_t, 3, 3>(num_pixels, &allocator);
+            auto lattice = PermutohedralLatticeGPU<float, 3, 3>(num_pixels, &allocator);
             lattice.filter(
-                output.data<scalar_t>(),
-                input.data<scalar_t>(),
-                positions.data<scalar_t>(),
-                weights.data<scalar_t>(),
+                output.data<float>(),
+                input.data<float>(),
+                positions.data<float>(),
+                weights.data<float>(),
                 reverse
             );
         }
         else if(pd == 3 && id == 3) {
-            auto lattice = PermutohedralLatticeGPU<scalar_t, 3, 4>(num_pixels, &allocator);
+            auto lattice = PermutohedralLatticeGPU<float, 3, 4>(num_pixels, &allocator);
             lattice.filter(
-                output.data<scalar_t>(),
-                input.data<scalar_t>(),
-                positions.data<scalar_t>(),
-                weights.data<scalar_t>(),
+                output.data<float>(),
+                input.data<float>(),
+                positions.data<float>(),
+                weights.data<float>(),
                 reverse
             );
         }
         else if(pd == 6 && id == 2) {
-            auto lattice = PermutohedralLatticeGPU<scalar_t, 6, 3>(num_pixels, &allocator);
+            auto lattice = PermutohedralLatticeGPU<float, 6, 3>(num_pixels, &allocator);
             lattice.filter(
-                output.data<scalar_t>(),
-                input.data<scalar_t>(),
-                positions.data<scalar_t>(),
-                weights.data<scalar_t>(),
+                output.data<float>(),
+                input.data<float>(),
+                positions.data<float>(),
+                weights.data<float>(),
                 reverse
             );
         }
         else if(pd == 6 && id == 3) {
-            auto lattice = PermutohedralLatticeGPU<scalar_t, 6, 4>(num_pixels, &allocator);
+            auto lattice = PermutohedralLatticeGPU<float, 6, 4>(num_pixels, &allocator);
             lattice.filter(
-                output.data<scalar_t>(),
-                input.data<scalar_t>(),
-                positions.data<scalar_t>(),
-                weights.data<scalar_t>(),
+                output.data<float>(),
+                input.data<float>(),
+                positions.data<float>(),
+                weights.data<float>(),
                 reverse
             );
         }
         else if(pd == 6 && id == 4) {
-            auto lattice = PermutohedralLatticeGPU<scalar_t, 6, 5>(num_pixels, &allocator);
+            auto lattice = PermutohedralLatticeGPU<float, 6, 5>(num_pixels, &allocator);
             lattice.filter(
-                output.data<scalar_t>(),
-                input.data<scalar_t>(),
-                positions.data<scalar_t>(),
-                weights.data<scalar_t>(),
+                output.data<float>(),
+                input.data<float>(),
+                positions.data<float>(),
+                weights.data<float>(),
                 reverse
             );
         }
         else if(pd == 6 && id == 5) {
-            auto lattice = PermutohedralLatticeGPU<scalar_t, 6, 6>(num_pixels, &allocator);
+            auto lattice = PermutohedralLatticeGPU<float, 6, 6>(num_pixels, &allocator);
             lattice.filter(
-                output.data<scalar_t>(),
-                input.data<scalar_t>(),
-                positions.data<scalar_t>(),
-                weights.data<scalar_t>(),
+                output.data<float>(),
+                input.data<float>(),
+                positions.data<float>(),
+                weights.data<float>(),
                 reverse
             );
         }
         else if(pd == 6 && id == 6) {
-            auto lattice = PermutohedralLatticeGPU<scalar_t, 6, 7>(num_pixels, &allocator);
+            auto lattice = PermutohedralLatticeGPU<float, 6, 7>(num_pixels, &allocator);
             lattice.filter(
-                output.data<scalar_t>(),
-                input.data<scalar_t>(),
-                positions.data<scalar_t>(),
-                weights.data<scalar_t>(),
+                output.data<float>(),
+                input.data<float>(),
+                positions.data<float>(),
+                weights.data<float>(),
                 reverse
             );
         }
         else if(pd == 6 && id == 7) {
-            auto lattice = PermutohedralLatticeGPU<scalar_t, 6, 8>(num_pixels, &allocator);
+            auto lattice = PermutohedralLatticeGPU<float, 6, 8>(num_pixels, &allocator);
             lattice.filter(
-                output.data<scalar_t>(),
-                input.data<scalar_t>(),
-                positions.data<scalar_t>(),
-                weights.data<scalar_t>(),
+                output.data<float>(),
+                input.data<float>(),
+                positions.data<float>(),
+                weights.data<float>(),
                 reverse
             );
         }
         else if(pd == 6 && id == 8) {
-            auto lattice = PermutohedralLatticeGPU<scalar_t, 6, 9>(num_pixels, &allocator);
+            auto lattice = PermutohedralLatticeGPU<float, 6, 9>(num_pixels, &allocator);
             lattice.filter(
-                output.data<scalar_t>(),
-                input.data<scalar_t>(),
-                positions.data<scalar_t>(),
-                weights.data<scalar_t>(),
+                output.data<float>(),
+                input.data<float>(),
+                positions.data<float>(),
+                weights.data<float>(),
                 reverse
             );
         }
         else{
             AT_ASSERTM(false, "permutohedral filter: this (pd,id) is not present in the compiled binary");
         }
-    }));
+    }
+    else{
+        AT_ERROR("permutohedral_filter_cuda not implemented for '", input.type().toString(), "'");
+    }
   
     return output;
 }

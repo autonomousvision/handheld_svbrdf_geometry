@@ -8,7 +8,7 @@ from data_adapters.adapter import load_data_adapter
 
 def permutohedral_test():
     lenna_cpu = cv2.imread("/is/sg/sdonne/Pictures/wallpapers/fairy-grove_2560x1440.jpg")[400:800, 1000:1500]
-    lenna_torch = torch.Tensor(lenna_cpu).cuda()
+    lenna_torch = torch.tensor(lenna_cpu, device=torch.device('cuda:0'), dtype=torch.float32)
     H, W = lenna_torch.shape[:2]
 
     xs = torch.ones(H, 1) @ torch.arange(0, W).view(1,-1).float()

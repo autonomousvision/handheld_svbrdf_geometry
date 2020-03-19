@@ -1,5 +1,5 @@
 {
-    "python.pythonPath": "/is/sg/sdonne/anaconda3/envs/brdf/bin/python",
+    "python.pythonPath": "/is/sg/sdonne/anaconda3/envs/BRDF/bin/python",
     "files.exclude": {
         "**/__pycache__": true,
     },

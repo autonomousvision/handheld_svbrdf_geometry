@@ -7,6 +7,6 @@ To compile the library, run
 
 The library can then simply be imported from the code/ directory as
 
-    from utils.TOME as TOME
+    import utils.TOME as TOME
 
 Credits to (https://github.com/MiguelMonteiro/permutohedral_lattice) for the actual permutohedral lattice code
