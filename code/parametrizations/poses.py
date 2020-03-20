@@ -5,6 +5,8 @@ from utils.quaternions import R_to_quaternion, quaternion_to_R
 from utils.vectors import normalize_
 import torch
 
+from functools import lru_cache
+
 class PoseParametrization(Parametrization):
     @abstractmethod
     def initialize(self, Rs, ts):
@@ -14,6 +16,7 @@ class PoseParametrization(Parametrization):
     def Rts(self):
         pass
 
+    @lru_cache(maxsize=1)
     def invRts(self, index=None):
         Rts = self.Rts()
         invRs = Rts[:,:3,:3].transpose(-1,-2)
@@ -37,6 +40,7 @@ class QuaternionPoseParametrization(PoseParametrization):
         self.qs = torch.nn.Parameter(R_to_quaternion(Rs).view(-1,4))
         self.ts = torch.nn.Parameter(ts.view(-1,3,1))
 
+    @lru_cache(maxsize=1)
     def Rts(self, index=None):
         Rts = torch.cat((quaternion_to_R(self.qs), self.ts), dim=-1)
         if index is None:
@@ -44,9 +48,11 @@ class QuaternionPoseParametrization(PoseParametrization):
         else:
             return Rts[index]
 
-    def parameters(self):
-        return [self.qs, self.ts]
-    
+    def parameter_info(self):
+        return {
+            "observation_poses": [[self.qs, self.ts], 1e-4, None]
+        }
+
     def serialize(self):
         return [self.qs.detach(), self.ts.detach()]
 

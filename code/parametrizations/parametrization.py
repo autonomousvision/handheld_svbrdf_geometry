@@ -1,9 +1,9 @@
 import torch
 from abc import abstractmethod
 
-class Parametrization(torch.nn.Module):
+class Parametrization:
     @abstractmethod
-    def parameters(self):
+    def parameter_info(self):
         pass
 
     @abstractmethod
@@ -13,3 +13,13 @@ class Parametrization(torch.nn.Module):
     @abstractmethod
     def deserialize(self, *args):
         pass
+
+    @abstractmethod
+    def enforce_parameter_bounds(self):
+        pass
+
+    def clear_cache(self):
+        for entry in dir(self):
+            entry = self.__getattribute__(entry)
+            if hasattr(entry, "cache_clear"):
+                entry.cache_clear()

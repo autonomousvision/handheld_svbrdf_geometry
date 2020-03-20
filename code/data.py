@@ -25,7 +25,8 @@ class ImageWrapper:
         intrinsics,
         extrinsics,
         vignetting,
-        val_view,
+        is_val_view,
+        is_ctr_view,
         light_info,
         down_sample=1,
         reup_sample=1,
@@ -39,7 +40,8 @@ class ImageWrapper:
         self.original_intrinsics = intrinsics
         self.original_extrinsics = extrinsics
         self.original_vignetting = vignetting
-        self.val_view = val_view
+        self.is_val_view = is_val_view
+        self.is_ctr_view = is_ctr_view
         self.light_info = light_info
         self.down_sample = down_sample
         self.reup_sample = reup_sample
@@ -297,7 +299,8 @@ class XimeaAdapter(ImageAdapter):
                     color_dir, view, data_settings['depth_scale'], device
                 ),
                 vignetting=vignetting,
-                val_view=val_view,
+                is_val_view=val_view,
+                is_ctr_view= view == self.center_view,
                 light_info=light_indices[np.where(light_indices[:,0] == view)[0].item(), 1],
                 down_sample=data_settings['input_down_sample'],
                 reup_sample=data_settings['input_reup_sample'],

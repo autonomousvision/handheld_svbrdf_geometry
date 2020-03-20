@@ -14,7 +14,7 @@ def closed_form_lambertian_solution(experiment_state, data_adapter, sample_radiu
         occlusions = []
 
         for observation_index, image in enumerate(tqdm(data_adapter.images, desc="Closed form> gathering observations")):
-            if not image.val_view:
+            if not image.is_val_view:
                 light_intensity, light_direction, shadow = experiment_state.light_parametrization.get_light_intensities(
                     experiment_state.locations,
                     experiment_state.observation_poses.Rts(observation_index),

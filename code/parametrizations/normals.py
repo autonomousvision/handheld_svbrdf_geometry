@@ -1,9 +1,12 @@
 from abc import abstractmethod
 import torch
+import numpy as np
 
 from utils.logging import error
 from parametrizations.parametrization import Parametrization
 from utils.vectors import normalize, cross_product
+
+from functools import lru_cache
 
 class NormalParametrization(Parametrization):
     def __init__(self, location_parametrization=None):
@@ -38,6 +41,7 @@ class PerPointNormals(NormalParametrization):
         self.thetas = torch.nn.Parameter(torch.zeros(nr_points, device=device))
         # TODO: initialize from the plane normals
 
+    @lru_cache(maxsize=1)
     def normals(self):
         sinphi = self.phis.sin()
         cosphi = self.phis.cos()
@@ -64,9 +68,11 @@ class PerPointNormals(NormalParametrization):
         normals = Ry @ Rz @ self.base_normals.view(-1,3,1)
         return normals.view(-1,3)
     
-    def parameters(self):
-        return [self.phis, self.thetas]
-    
+    def parameter_info(self):
+        return {
+            "normals": [[self.phis, self.thetas], np.pi/360, None],
+        }
+
     def serialize(self):
         return [self.base_normals, self.phis.detach(), self.thetas.detach()]
 
@@ -97,10 +103,10 @@ class HardLinkedNormals(NormalParametrization):
             self.location_parametrization.mask
         ]
     
-    def parameters(self):
+    def parameter_info(self):
         # we have no parameters
-        pass
-    
+        return {}
+
     def serialize(self):
         # we have no parameters
         pass

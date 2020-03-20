@@ -98,7 +98,6 @@ class ExperimentState:
         elif initialization_settings['normals'] == "from_depth":
             self.normals.initialize(self.locations.implied_normal_vector())
 
-
     def simulate(self, observation_index, light_info, shadow_cache=None):
         """
         Simulate the result of the current experiment state for a given observation index, including the shadow mask if requested
@@ -128,7 +127,7 @@ class ExperimentState:
         incident_light = light_intensities * inner_product(light_directions, surface_normals)
 
         incident_light.clamp_(min=0.)
-        incident_light[calculated_shadowing] = 0.
+        incident_light[shadow_mask] = 0.
 
         reflected_light = surface_rhos * incident_light
 
@@ -256,6 +255,25 @@ class ExperimentState:
             "observation_poses": self.observation_poses,
             "lights": self.light_parametrization,
         }
+
+    def enforce_parameter_bounds(self):
+        [field.enforce_parameter_bounds() for field in self._get_named_fields().values()]
+
+    def clear_parametrization_caches(self):
+        [field.clear_cache() for field in self._get_named_fields().values()]
+
+    def get_parameter_dictionaries(self):
+        parameter_dictionary = {}
+        learning_rate_dictionary = {}
+        visualizer_dictionary = {}
+        for field in self._get_named_fields().values():
+            parameter_info = field.parameter_info()
+            for parameter in parameter_info:
+                parameter_dictionary[parameter] = parameter_info[parameter][0]
+                learning_rate_dictionary[parameter] = parameter_info[parameter][1]
+                visualizer_dictionary[parameter] = parameter_info[parameter][2]
+            
+        return parameter_dictionary, learning_rate_dictionary, visualizer_dictionary
 
     def load(self, folder):
         for name, field in self._get_named_fields().items():

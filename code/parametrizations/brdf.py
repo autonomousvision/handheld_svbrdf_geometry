@@ -5,6 +5,8 @@ from abc import abstractmethod, abstractstaticmethod
 from utils.vectors import inner_product, normalize
 from parametrizations.parametrization import Parametrization
 
+from functools import lru_cache
+
 class BrdfParametrization(Parametrization):
     @staticmethod
     def _calculate_NdotHs(Ls, Vs, normals):
@@ -69,7 +71,7 @@ class BrdfParametrization(Parametrization):
         pass
 
     @abstractmethod
-    def enforce_parameter_bounds(self, parameter_dict):
+    def enforce_brdf_parameter_bounds(self, parameter_dict):
         """
         Perform Euclidean projection of the parameters onto their feasible domain.
         This is performed in-place on the underlying data of the dictionary elements.
@@ -89,10 +91,13 @@ class Diffuse(BrdfParametrization):
 
         return rhos, NdotHs
     
+    def parameter_info(self):
+        return {}
+
     def get_parameter_count(self):
         return 3, {}
 
-    def enforce_parameter_bounds(self, parameters):
+    def enforce_brdf_parameter_bounds(self, parameters):
         parameters['diffuse'].data.clamp_(min=0.0)
 
     def serialize(self):
@@ -201,8 +206,10 @@ def SmithG1(NdotWs, p_roughness):
     # if any of the cosines are negative, then this clamping will eventually
     # result in zero shadow-masking coefficient terms
     cos_thetas = NdotWs.clamp_(min=0.0, max=1.0)
-    sin_thetas = (1 - cos_thetas**2).sqrt()
-    cot_thetas = cos_thetas / sin_thetas
+    cos_thetas2 = cos_thetas**2
+    # sin_thetas == 0 gets handled below. Trips up the sqrt() backprop otherwise
+    sin_thetas = (1 - cos_thetas2 + (cos_thetas2 == 1).float()).sqrt()
+    cot_thetas = cos_thetas / (sin_thetas)
     prelims = cot_thetas / p_roughness.view(-1,1,1)
     prelims2 = prelims**2
 
@@ -243,24 +250,25 @@ class CookTorrance(BrdfParametrization):
         # Smith's shadow-masking function
         Gs = SmithG1(NdotLs, p_roughness) * SmithG1(NdotVs, p_roughness)
 
-        CTs = p_specular.view(-1,1,3) * (Fs * Ds * Gs) / (4 * np.pi * NdotLs * NdotVs)
-
-        # guard against bad denominators
-        CTs[CTs != CTs] = 0
+        denominator = 4 * np.pi * NdotLs * NdotVs
+        CTs = p_specular.view(-1,1,3) * (Fs * Ds * Gs) / (denominator + (denominator == 0).float())
 
         rhos = p_diffuse.view(-1,1,3) / np.pi + CTs
 
         return rhos, NdotHs
     
+    def parameter_info(self):
+        return {}
+
     def get_parameter_count(self):
         return 3, {'albedo': 3, 'roughness': 1, 'eta': 1}
 
-    def enforce_parameter_bounds(self, parameters):
-        params['diffuse'].data.clamp_(min=0.0)
-        params['specular']['albedo'].data.clamp_(min=0.0)
-        params['specular']['roughness'].data.clamp_(min=1e-6, max=1 - 1e-6)
-        if 'eta' in params['specular']:
-            params['specular']['eta'].data.clamp_(min=1.0001, max=2.999)
+    def enforce_brdf_parameter_bounds(self, parameters):
+        parameters['diffuse'].data.clamp_(min=0.0)
+        parameters['specular']['albedo'].data.clamp_(min=0.0)
+        parameters['specular']['roughness'].data.clamp_(min=1e-6, max=1 - 1e-6)
+        if 'eta' in parameters['specular']:
+            parameters['specular']['eta'].data.clamp_(min=1.0001, max=2.999)
 
     def serialize(self):
         pass
@@ -269,25 +277,9 @@ class CookTorrance(BrdfParametrization):
         pass
 
 
-class CookTorranceF1(BrdfParametrization):
-    def calculate_rhos(self, Ls, Vs, normals, parameters):
-        return CookTorrance.calculate_rhos(
-            Ls,
-            Vs,
-            normals,
-        )
-    
+class CookTorranceF1(CookTorrance):
     def get_parameter_count(self):
         return 3, {'albedo': 3, 'roughness': 1}
-
-    def enforce_parameter_bounds(self, parameters):
-        CookTorrance.enforce_parameter_bounds(parameters)
-
-    def serialize(self):
-        pass
-
-    def deserialize(self, *args):
-        pass
 
 
 def BrdfParametrizationFactory(name):

@@ -35,8 +35,7 @@ def normalize(this):
         result              ...xD torch.tensor containing the normalized version
     """
     this_norm = norm(this)
-    this_norm[this_norm == 0] = 1.0
-    result = this / this_norm
+    result = this / (this_norm + (this_norm == 0).float())
     return result
 
 def normalize_(this):
@@ -49,7 +48,7 @@ def normalize_(this):
     """
     this_norm = norm(this.data)
     this_norm[this_norm == 0] = 1.0
-    this.data.cdiv_(this_norm)
+    this.data.div_(this_norm + (this_norm == 0).float())
 
 def norm(this, keepdim=True):
     """

@@ -4,6 +4,8 @@ from parametrizations.parametrization import Parametrization
 
 from utils.logging import error
 
+from functools import lru_cache
+
 class MaterialParametrization(Parametrization):
     def __init__(self, brdf_parametrization=None):
         super().__init__()
@@ -98,6 +100,7 @@ class BaseSpecularMaterials(MaterialParametrization):
         }
         self.base_weights = torch.nn.Parameter(torch.ones(nr_points, nr_bases, device=device) / nr_bases)
     
+    @lru_cache(maxsize=1)
     def get_brdf_parameters(self):
         return {
             "diffuse": self.brdf_parameters['diffuse'],
@@ -110,17 +113,17 @@ class BaseSpecularMaterials(MaterialParametrization):
             ])
         }
     
-    def parameters(self):
-        return [
-            self.base_weights,
-            self.brdf_parameters['diffuse'],
-            *self.brdf_parameters['specular'].values()
-        ]
+    def parameter_info(self):
+        return {
+            "diffuse_materials": [self.brdf_parameters['diffuse'], 1e-2, lambda x: x.mean(dim=0, keepdim=True)],
+            "specular_weights": [self.base_weights, 5e-2, lambda x: - (x * (x + (x == 0).float()).log()).sum(dim=1).mean()],
+            "specular_materials": [self.brdf_parameters['specular'].values(), 1e-2, lambda x: x],
+        }
 
     def enforce_parameter_bounds(self):
         self.base_weights.data.clamp_(min=0.,max=1.)
-        self.base_weights.cdiv_(self.base_weights.sum(dim=-1, keepdim=True))
-        self.brdf_parametrization.enforce_parameter_bounds(self.brdf_parameters)
+        self.base_weights.data.div_(self.base_weights.sum(dim=-1, keepdim=True))
+        self.brdf_parametrization.enforce_brdf_parameter_bounds(self.brdf_parameters)
 
     def serialize(self):
         return self.base_weights.detach(), detach_dict_recursive(self.brdf_parameters)
