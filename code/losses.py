@@ -22,18 +22,15 @@ class LossFunction(ABC):
 
 class PhotoconsistencyL1Loss(LossFunction):
     def evaluate(self, simulations, observations, experiment_state, data_adapter):
-        pixel_losses = 0
-        for idx in range(len(simulations)):
-            photo_losses = (simulations[idx] - observations[idx][0]).abs()
+        photo_losses = (simulations - observations[0]).abs()
 
-            out_of_bounds = observations[idx][0] == OBSERVATION_OUT_OF_BOUNDS
-            masked_out = observations[idx][0] == OBSERVATION_MASKED_OUT
-            occluded = observations[idx][1]
-            shadowed = simulations[idx] == SIMULATION_SHADOWED
+        out_of_bounds = observations[0][...,0] == OBSERVATION_OUT_OF_BOUNDS
+        masked_out = observations[0][...,0] == OBSERVATION_MASKED_OUT
+        occluded = observations[1]
+        shadowed = simulations[...,0] == SIMULATION_SHADOWED
+        valid_losses = (out_of_bounds + masked_out + occluded + shadowed)[:,:,None] == 0
 
-            valid_losses = (out_of_bounds + masked_out + occluded + shadowed) == 0
-            pixel_losses += photo_losses * valid_losses.float()
-        return pixel_losses / len(simulations)
+        return photo_losses * valid_losses.float() / len(simulations)
 
 
 class GeometricConsistencyLoss(LossFunction):

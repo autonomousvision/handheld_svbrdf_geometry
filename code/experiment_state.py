@@ -98,7 +98,7 @@ class ExperimentState:
         elif initialization_settings['normals'] == "from_depth":
             self.normals.initialize(self.locations.implied_normal_vector())
 
-    def simulate(self, observation_index, light_info, shadow_cache=None):
+    def simulate(self, observation_indices, light_infos, shadow_cache=None):
         """
         Simulate the result of the current experiment state for a given observation index, including the shadow mask if requested
         """
@@ -106,22 +106,22 @@ class ExperimentState:
             shadow_cache = {}
 
         surface_points = self.locations.location_vector()
-        surface_normals = self.normals.normals().view(-1,1,3)
-        obs_Rt = self.observation_poses.Rts(observation_index)
-        shadow_cache_miss = not observation_index in shadow_cache
+        obs_Rt = self.observation_poses.Rts(observation_indices)
+        shadow_cache_miss = not light_infos in shadow_cache
         light_intensities, light_directions, calculated_shadowing = self.light_parametrization.get_light_intensities(
-            self.locations, obs_Rt, light_info=light_info, calculate_shadowing=shadow_cache_miss
+            self.locations, obs_Rt, light_infos=light_infos, calculate_shadowing=shadow_cache_miss
         )
 
         if shadow_cache_miss:
             shadow_mask = calculated_shadowing
-            shadow_cache[observation_index] = shadow_mask
+            shadow_cache[light_infos] = shadow_mask
         else:
-            shadow_mask = shadow_cache[observation_index]
+            shadow_mask = shadow_cache[light_infos]
 
-        obs_camloc = self.observation_poses.camlocs(observation_index)
-        view_directions = normalize(obs_camloc.view(1,3) - surface_points)
+        obs_camloc = self.observation_poses.camlocs(observation_indices)
+        view_directions = normalize(obs_camloc.view(-1,1,3) - surface_points[None])
         surface_materials = self.materials.get_brdf_parameters()
+        surface_normals = self.normals.normals().view(1,-1,3)
         surface_rhos, NdotHs = self.brdf.calculate_rhos(light_directions, view_directions, surface_normals, surface_materials)
 
         incident_light = light_intensities * inner_product(light_directions, surface_normals)
@@ -129,101 +129,147 @@ class ExperimentState:
         incident_light.clamp_(min=0.)
         incident_light[shadow_mask] = 0.
 
-        reflected_light = surface_rhos * incident_light
+        simulation = surface_rhos * incident_light
 
         # TODO: this is where vignetting would normally come in
 
-        simulation = reflected_light.sum(dim=1)
-        simulation[incident_light.max(dim=1,keepdim=False)[0] <= 0] = SIMULATION_SHADOWED
+        simulation[incident_light <= 0] = SIMULATION_SHADOWED
 
         return simulation
 
-    def extract_observations(self, data_adapter, observation_index, calculate_occlusions=True, occlusion_cache=None, smoothing_radius=None):
+    def extract_observations(self, data_adapter, observation_indices, calculate_occlusions=True, occlusion_cache=None, smoothing_radius=None):
         """
         Get the relevant observed values for a given observation index, including the occlusion mask if requested
         """
         if occlusion_cache is None:
             occlusion_cache = {}
 
-        obs_Rt = self.observation_poses.Rts(observation_index)
-        obs_camloc = self.observation_poses.camlocs()[observation_index]
+        obs_Rt = self.observation_poses.Rts(observation_indices)
+        obs_camloc = self.observation_poses.camlocs(observation_indices)
 
         ctr_Rt = data_adapter.center_invRt.inverse()
         ctr_P = data_adapter.center_invK.inverse() @ ctr_Rt[:3]
-        obs_K = data_adapter.images[observation_index].get_intrinsics()
+        obs_K = torch.stack(
+            [data_adapter.images[observation_index].get_intrinsics() for observation_index in observation_indices],
+            dim=0
+        )
         obs_P = obs_K @ obs_Rt
 
-        surface_points = self.locations.location_vector() # Nx3
-        projected = surface_points @ obs_P[:3,:3].T + obs_P[:3,3:].T
-        projected_depth = projected[:, 2:]
-        projected = projected[:, :2] / projected_depth
+        surface_points = self.locations.location_vector().view(1,-1,3) # 1xNx3
+        projected = surface_points @ obs_P[...,:3,:3].transpose(-1,-2) + obs_P[...,:3,3:].transpose(-1,-2)
+        projected_depth = projected[..., 2:]
+        projected = projected[..., :2] / projected_depth
         projected_p = projected.clone()
 
-        image_data, saturation_data = data_adapter.images[observation_index].get_image() # 3xHxW
-        if smoothing_radius is not None and smoothing_radius > 0:
-            weights = torch.ones(1,1,2*smoothing_radius+1,2*smoothing_radius+1).to(image_data.device) / (2*smoothing_radius+1)**2
-            image_data = torch.nn.functional.conv2d(image_data[:,None], weights, bias=None, padding=smoothing_radius)[:,0]
+        if hasattr(data_adapter,"compound_image_tensor"):
+            compound_image_tensor = data_adapter.compound_image_tensor
+            if smoothing_radius is not None and smoothing_radius > 0:
+                weights = torch.ones(1,1,2*smoothing_radius+1,2*smoothing_radius+1).to(compound_image_tensor.device) / (2*smoothing_radius+1)**2
+                compound_image_tensor = torch.nn.functional.conv2d(
+                    compound_image_tensor.view(-1,1,*compound_image_tensor.shape[-2:]),
+                    weights, bias=None, padding=smoothing_radius
+                ).view(compound_image_tensor.shape)
+            compound_H, compound_W = compound_image_tensor.shape[-2:]
+            compound_sizes = data_adapter.compound_image_tensor_sizes
 
-        projected += 0.5
-        projected[:,0] /= image_data.shape[2]/2
-        projected[:,1] /= image_data.shape[1]/2
-        projected -= 1
+            projected += 0.5
+            projected[...,0] /= compound_image_tensor.shape[-1]/2
+            projected[...,1] /= compound_image_tensor.shape[-2]/2
+            projected -= 1
 
-        observation = torch.nn.functional.grid_sample(
-            image_data[None],
-            projected[None, :, None],
-            mode="bilinear",
-            align_corners=False,
-        )
-        saturation = torch.nn.functional.grid_sample(
-            saturation_data[None, None],
-            projected[None, :, None],
-            mode="bilinear",
-            align_corners=False,
-        )
-
-        observation = observation[0, :, :, 0].transpose(0, 1) # Nx3
-        observation.masked_fill_(projected[:,:1].abs() >= 0.99, OBSERVATION_OUT_OF_BOUNDS)
-        observation.masked_fill_(projected[:,1:].abs() >= 0.99, OBSERVATION_OUT_OF_BOUNDS)
-        saturation = saturation[0, :, :, 0].transpose(0, 1) # Nx3
-        saturation.masked_fill_(projected[:,:1].abs() >= 0.99, OBSERVATION_OUT_OF_BOUNDS)
-        saturation.masked_fill_(projected[:,1:].abs() >= 0.99, OBSERVATION_OUT_OF_BOUNDS)
-
-        if observation_index in occlusion_cache:
-            occlusion_mask = occlusion_cache[observation_index]
+            observations = torch.nn.functional.grid_sample(
+                compound_image_tensor,
+                projected[:, None],
+                mode="bilinear",
+                align_corners=False,
+            )[:,:,0]
         else:
-            occlusion_fattening = general_settings.occlusion_fattening
-            depth_image = self.locations.create_image(surface_points) @ ctr_Rt[2:3,:3].T[None] + ctr_Rt[2:3,3:].T[None]
-            with torch.no_grad():
-                obs_invKR = obs_Rt[:3,:3].T @ obs_K.inverse()
-                bounded = depth_reprojection_bound(depth_image.view(1,depth_image.shape[0], depth_image.shape[1]),
-                                                        ctr_P.view(1,3,4),
-                                                        obs_invKR.view(1,1,3,3),
-                                                        obs_camloc.view(1,1,3,1),
-                                                        image_data.shape[1],
-                                                        image_data.shape[2],
-                                                        0.250,
-                                                        1.500,
-                                                        0.010)
-                zbuffer = torch.nn.functional.grid_sample(
-                    bounded,
-                    projected[None, :, None],
+            observations = []
+            compound_H = 0
+            compound_W = 0
+            compound_sizes = torch.zeros(C, 2, dtype=torch.long, device=device)
+            for idx, observation_index in enumerate(observation_indices):
+                image_data = data_adapter.images[observation_index].get_image() # 3xHxW
+                if smoothing_radius is not None and smoothing_radius > 0:
+                    weights = torch.ones(1,1,2*smoothing_radius+1,2*smoothing_radius+1).to(image_data.device) / (2*smoothing_radius+1)**2
+                    image_data = torch.nn.functional.conv2d(image_data[:,None], weights, bias=None, padding=smoothing_radius)[:,0]
+                compound_H = max(compound_H, image_data.shape[-2])
+                compound_W = max(compound_W, image_data.shape[-1])
+                compound_sizes[idx,0] = image_data.shape[-1]
+                compound_sizes[idx,1] = image_data.shape[-2]
+
+                subprojected = projected[idx]
+                subprojected += 0.5
+                subprojected[...,0] /= image_data.shape[-1]/2
+                subprojected[...,1] /= image_data.shape[-2]/2
+                subprojected -= 1
+
+                observation = torch.nn.functional.grid_sample(
+                    image_data[None],
+                    subprojected[None, None],
                     mode="bilinear",
                     align_corners=False,
-                )
+                )[:,:,0]
+
+                observations.append(observation)
+            observations = torch.cat(observations, dim=0)
+            
+            projected += 0.5
+            projected[...,0] /= compound_W/2
+            projected[...,1] /= compound_H/2
+            projected -= 1
+
+        observations = observations.transpose(-1, -2) # CxNx3
+        out_of_bounds = (
+            (projected_p[...,0] < 1) +
+            (projected_p[...,1] < 1) +
+            (projected_p[...,0] >= data_adapter.compound_image_tensor_sizes[:,:1]) + 
+            (projected_p[...,1] >= data_adapter.compound_image_tensor_sizes[:,1:])
+        )[:,:,None] > 0
+        observations.masked_fill_(out_of_bounds, OBSERVATION_OUT_OF_BOUNDS)
+        observations.masked_fill_(out_of_bounds, OBSERVATION_OUT_OF_BOUNDS)
+        # saturations = saturations.transpose(-1, -2) # CxNx3
+        # saturations.masked_fill_(projected[...,:1].abs() >= 0.99, OBSERVATION_OUT_OF_BOUNDS)
+        # saturations.masked_fill_(projected[...,1:].abs() >= 0.99, OBSERVATION_OUT_OF_BOUNDS)
+
+        if observation_indices in occlusion_cache:
+            occlusion_masks = occlusion_cache[observation_indices]
+        else:
+            occlusion_fattening = general_settings.occlusion_fattening
+            depth_image = self.locations.create_image(surface_points.view(-1,3)) @ ctr_Rt[2:3,:3].T[None] + ctr_Rt[2:3,3:].T[None]
+            with torch.no_grad():
+                obs_invKR = obs_Rt[...,:3,:3].transpose(-1,-2) @ obs_K.inverse()
+                bounded = depth_reprojection_bound(
+                    depth_image.view(1,*depth_image.shape[:2]),
+                    ctr_P.view(1,3,4),
+                    obs_invKR.view(1,-1,3,3),
+                    obs_camloc.view(1,-1,3,1),
+                    compound_H,
+                    compound_W,
+                    0.250,
+                    1.500,
+                    0.010
+                ).view(-1,1,compound_H, compound_W)
+                zbuffer = torch.nn.functional.grid_sample(
+                    bounded,
+                    projected[:, None],
+                    mode="bilinear",
+                    align_corners=False,
+                )[:,0,0,:,None]
                 occlusion_mask = projected_depth >= zbuffer + 0.005
                 if occlusion_fattening is not None and occlusion_fattening > 0:
                     # first, scatter the occlusion mask into the 'bounded' plane
                     projected_pl = projected_p.round().long()
                     projected_pl.clamp_(min=0)
-                    projected_pl[:,0].clamp_(max=image_data.shape[2]-1)
-                    projected_pl[:,1].clamp_(max=image_data.shape[1]-1)
+                    projected_pl[...,0].clamp_(max=compound_W-1)
+                    projected_pl[...,1].clamp_(max=compound_H-1)
                     occluders = torch.zeros_like(bounded)
-                    lin_idces = projected_pl[:,0] + projected_pl[:,1] * image_data.shape[2]
-                    occluders.view(-1)[lin_idces] = occlusion_mask.view(-1).float()
+                    lin_idces = projected_pl[...,0] + projected_pl[...,1] * compound_W
+                    C = bounded.shape[0]
+                    occluders.view(C,-1).scatter_(dim=1,index=lin_idces, src=occlusion_mask.view(C,-1).float())
                     # then dilate only those pixels that caused occlusion
                     weights = torch.ones(1,1,2*occlusion_fattening+1,2*occlusion_fattening+1).to(occluders.device)
-                    occluders[bounded == 0] = 0.
+                    occluders.masked_fill_(bounded == 0, 0.)
                     occluders_dilated = torch.nn.functional.conv2d(
                         bounded * occluders, weights, bias=None, padding=occlusion_fattening
                     )
@@ -235,16 +281,16 @@ class ExperimentState:
                     # then recalculate the occlusion
                     fattened_zbuffer = torch.nn.functional.grid_sample(
                         fattened_bounded,
-                        projected[None, :, None],
+                        projected[:, None],
                         mode="bilinear",
-                        align_corners=False
-                    )
+                        align_corners=False,
+                    )[:,0,0,:,None]
                     fattened_occlusion_mask = projected_depth >= fattened_zbuffer + 0.005
                     occlusion_mask = fattened_occlusion_mask
-                occlusion_mask = occlusion_mask.view(-1, 1)
-                occlusion_cache[observation_index] = occlusion_mask
+                occlusion_masks = occlusion_mask.view(C, -1)
+                occlusion_cache[observation_indices] = occlusion_masks
 
-        return observation, occlusion_mask
+        return observations, occlusion_masks
 
     def _get_named_fields(self):
         return {

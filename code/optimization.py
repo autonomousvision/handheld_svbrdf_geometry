@@ -1,12 +1,14 @@
 import torch
 from tqdm import tqdm
 from losses import LossFunctionFactory
+import general_settings
 
 torch.autograd.set_detect_anomaly(True)
 
 def optimize(experiment_state, data_adapter, optimization_settings):
     parameter_dictionary, learning_rate_dictionary, visualizer_dictionary = experiment_state.get_parameter_dictionaries()
-
+    device = torch.device(general_settings.device_name)
+    
     parameter_groups = []
     for parameter in optimization_settings['parameters']:
         if not parameter in parameter_dictionary:
@@ -42,22 +44,38 @@ def optimize(experiment_state, data_adapter, optimization_settings):
         if visualizer_dictionary[parameter] is not None
     ])
 
+    training_indices = []
+    training_light_infos = []
+    for image_index, image in enumerate(data_adapter.images):
+        if not image.is_val_view:
+            training_indices.append(image_index)
+            training_light_infos.append(image.light_info)
+        if image.is_ctr_view:
+            ctr_index = image_index
+    training_indices = torch.tensor(training_indices, dtype=torch.long, device=device)
+    training_light_infos = torch.tensor(training_light_infos, dtype=torch.long, device=device)
+    if training_light_infos.min() < 0:
+        error("Trying to reconstruct an image without a light source.")
+
+
     optimization_loop = tqdm(range(iterations))
     for iteration in optimization_loop:
         optimizer.zero_grad()
 
         simulations = []
         observations = []
-        for image_index, image in enumerate(data_adapter.images):
-            if not image.is_val_view:
-                simulations.append(
-                    experiment_state.simulate(image_index, image.light_info, shadow_cache=shadow_cache)
-                )
-                observations.append(
-                    experiment_state.extract_observations(data_adapter, image_index, occlusion_cache=occlusion_cache)
-                )
-            if image.is_ctr_view:
-                ctr_index = image_index
+
+        simulations = experiment_state.simulate(
+            training_indices,
+            training_light_infos,
+            shadow_cache=shadow_cache
+        )
+
+        observations = experiment_state.extract_observations(
+            data_adapter,
+            training_indices,
+            occlusion_cache=occlusion_cache
+        )
         
         total_loss = 0.0
         for loss_index in range(len(losses)):
@@ -73,7 +91,6 @@ def optimize(experiment_state, data_adapter, optimization_settings):
             for parameter in parameter_dictionary['observation_poses']:
                 if parameter.grad is not None:
                     parameter.grad[ctr_index].zero_()
-
 
         optimizer.step()
         experiment_state.enforce_parameter_bounds()

@@ -25,7 +25,7 @@ class PoseParametrization(Parametrization):
         if index is None:
             return invRts
         else:
-            return invRts[index]
+            return invRts.index_select(dim=0, index=index)
 
     def camlocs(self, index=None):
         return self.invRts(index)[...,:3,3:].contiguous()
@@ -46,7 +46,7 @@ class QuaternionPoseParametrization(PoseParametrization):
         if index is None:
             return Rts
         else:
-            return Rts[index]
+            return Rts.index_select(dim=0, index=index)
 
     def parameter_info(self):
         return {

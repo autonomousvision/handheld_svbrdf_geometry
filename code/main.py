@@ -2,11 +2,13 @@ import json
 import os
 from tqdm import tqdm
 import cv2
+import torch
 
 from data import DataAdapterFactory
 from experiment_state import ExperimentState
 from experiment_settings import ExperimentSettings
 from optimization import optimize
+import general_settings
 
 from utils.logging import error
 
@@ -96,9 +98,28 @@ data_adapter = DataAdapterFactory(
 )(
     experiment_settings.get('local_data_settings')
 )
-observations = data_adapter.images
+
 if not experiment_settings.get('data_settings')['lazy_image_loading']:
-    [observation.get_image() for observation in tqdm(observations, desc="Preloading images")]
+    device = torch.device(general_settings.device_name)
+    image_tensors = [observation.get_image() for observation in tqdm(data_adapter.images, desc="Preloading images") if not observation.is_val_view]
+    # now compact all observations into a single tensor (both intensities and saturations)
+    # and remove the old tensors
+    # this makes for MUCH faster access
+    compound_H = max([tensor.shape[-2] for tensor in image_tensors])
+    compound_W = max([tensor.shape[-1] for tensor in image_tensors])
+    C = len(image_tensors)
+    compound_images = torch.zeros(C, 3, compound_H, compound_W, dtype=torch.float, device=device)
+    compound_sizes = torch.zeros(C, 2, dtype=torch.long, device=device)
+    for i in range(len(image_tensors)):
+        src_tensor = image_tensors[i]
+        compound_images[i,:,:src_tensor.shape[-2], :src_tensor.shape[-1]] = src_tensor
+        compound_sizes[i,0] = src_tensor.shape[-1]
+        compound_sizes[i,1] = src_tensor.shape[-2]
+        del data_adapter.images[i]._image
+    data_adapter.compound_image_tensor = compound_images
+    data_adapter.compound_image_tensor_sizes = compound_sizes
+    del image_tensors
+
 experiment_settings.save("data_settings")
 
 # initialize the parametrizations with the requested values, if the initialization is not available on disk

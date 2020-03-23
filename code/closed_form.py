@@ -3,8 +3,10 @@ import numpy as np
 from tqdm import tqdm
 from utils.vectors import normalize, inner_product
 from utils.sentinels import OBSERVATION_OUT_OF_BOUNDS
+import general_settings
 
 def closed_form_lambertian_solution(experiment_state, data_adapter, sample_radius=7):
+    device = torch.device(general_settings.device_name)
     # calculates the closed-form solution given the current state and the measurements
     with torch.no_grad():
         light_intensities = []
@@ -13,57 +15,61 @@ def closed_form_lambertian_solution(experiment_state, data_adapter, sample_radiu
         observations = []
         occlusions = []
 
-        for observation_index, image in enumerate(tqdm(data_adapter.images, desc="Closed form> gathering observations")):
+        training_indices = []
+        training_light_infos = []
+        for image_index, image in enumerate(data_adapter.images):
             if not image.is_val_view:
-                light_intensity, light_direction, shadow = experiment_state.light_parametrization.get_light_intensities(
-                    experiment_state.locations,
-                    experiment_state.observation_poses.Rts(observation_index),
-                    light_info=image.light_info,
-                )
-                light_intensities.append(light_intensity)
-                light_directions.append(light_direction)
-                shadows.append(shadow)
+                training_indices.append(image_index)
+                training_light_infos.append(image.light_info)
+            if image.is_ctr_view:
+                ctr_index = image_index
+        training_indices = torch.tensor(training_indices, dtype=torch.long, device=device)
+        training_light_infos = torch.tensor(training_light_infos, dtype=torch.long, device=device)
+        if training_light_infos.min() < 0:
+            error("Trying to reconstruct an image without a light source.")
 
-                observation, occlusion = experiment_state.extract_observations(
-                    data_adapter,
-                    observation_index,
-                    smoothing_radius=sample_radius,
-                )
-                occlusion = (occlusion + (observation[:,:1] == OBSERVATION_OUT_OF_BOUNDS)) > 0
-                observations.append(observation)
-                occlusions.append(occlusion)
-                
-        light_intensities = torch.stack(light_intensities, dim=1)
-        light_directions = torch.stack(light_directions, dim=1)
-        shadows = torch.stack(shadows, dim=1)
-        observations = torch.stack(observations, dim=1)
-        occlusions = torch.stack(occlusions, dim=1)
+        light_intensities, light_directions, shadows = experiment_state.light_parametrization.get_light_intensities(
+            experiment_state.locations, experiment_state.observation_poses.Rts(training_indices), light_infos=training_light_infos
+        )
+        light_intensities = light_intensities.transpose(0,1)
+        light_directions = light_directions.transpose(0,1)
+        shadows = shadows.transpose(0,1)
 
-        incident_light = ( # points x views x color channels x direction ray
-            light_intensities[:,:,:,:,None] * light_directions[:,:,:,None,:]
-        ).sum(dim=2, keepdim=False)
+
+        observations, occlusions = experiment_state.extract_observations(
+            data_adapter,
+            training_indices,
+            smoothing_radius=sample_radius,
+        )
+        occlusions = (occlusions + (observations[...,1] == OBSERVATION_OUT_OF_BOUNDS)) > 0
+        observations = observations.transpose(0,1)
+        occlusions = occlusions.transpose(0,1)
+
+        incident_light = ( # points x views x color channels x direction_ray
+            light_intensities[:,:,:,None] * light_directions[:,:,None,:]
+        )
         
-        shadowing_mask = (shadows == 0).float()
-        occlusion_mask = (occlusions == 0).float()
-        valid_mask = shadowing_mask * occlusion_mask
+        shadowing_mask = (shadows == 0).float()[:,:,None]
+        occlusion_mask = (occlusions == 0).float()[:,:,None]
+        valid_mask = (shadowing_mask * occlusion_mask)
         invalids = (valid_mask.sum(dim=1) <= 2).float().view(-1,1,1)
         eye = torch.eye(3, device=invalids.device).view(1,3,3)*1e8
         
         # normals are estimated from a gray-scale version. However, here we are aiming for maximum SNR rather than
         # a visually pleasing grayscale. As such, no fancy color-dependent scaling
-        gray_light_intensities = incident_light.mean(dim=2, keepdim=False) * valid_mask
-        gray_observations = observations.mean(dim=2, keepdim=True) * valid_mask
+        gray_light_intensities = incident_light.mean(dim=-2, keepdim=False) * valid_mask
+        gray_observations = observations.mean(dim=-1, keepdim=True) * valid_mask
 
         # a RANSAC approach
         # at every iteration, we take a small subset to calculate the solution from
         # and count the number of inliers
-        subset_size = min(len(observations), 6)
+        subset_size = min(observations.shape[1], 6)
         threshold = 1e4
         # we aim for 10 succesfull RANSAC samples (i.e. without outliers)
         # not taking into account the sample set size
         estimated_outlier_ratio = 0.20
         targeted_success_chance = 1-1e-4
-        nr_its = 10*np.log(1-targeted_success_chance) / np.log(1 - (1-estimated_outlier_ratio) ** subset_size) if subset_size < len(observations) else 1
+        nr_its = 10*np.log(1-targeted_success_chance) / np.log(1 - (1-estimated_outlier_ratio) ** subset_size) if subset_size < observations.shape[1] else 1
         best_inlier_counts = torch.zeros(observations.shape[0], 1, 1).to(observations.device)-1
         best_inliers = torch.zeros(*observations.shape[:2], 1).to(observations.device)
         ransac_loop = tqdm(range(int(nr_its)))

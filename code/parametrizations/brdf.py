@@ -27,11 +27,9 @@ class BrdfParametrization(Parametrization):
             NdotHs          NxLx1 torch.tensor containing the inner products between
                                 the surface normals and the view-light half vectors
         """
-        N, L = Ls.shape[:2]
-        Vs = Vs.view(N, 1, 3)
         Hs = (Ls + Vs)
         Hs = normalize(Hs)
-        NdotHs = inner_product(normals.view(-1,1,3), Hs)
+        NdotHs = inner_product(normals, Hs)
         return Hs, NdotHs
 
     @abstractmethod
@@ -117,7 +115,6 @@ def Fresnel(NdotLs, p_eta_mat):
         NdotLs              NxLx1 torch.tensor with the inner products
         p_eta_mat           Nx1 torch.tensor with the dielectric coefficients of the surface
     """
-    p_eta_mat = p_eta_mat.view(-1,1,1)
     cos_thetas_env = NdotLs
 
     # Snell's law
@@ -155,7 +152,6 @@ def Beckmann(NdotHs, p_roughness):
     Outputs:
         Ds              NxLx1 torch.tensor containing the microfacet distributions
     """
-    p_roughness = p_roughness.view(-1,1,1)
     cosNH2 = (NdotHs ** 2).clamp_(min=0., max=1.)
     cosNH4 = cosNH2 ** 2
     tanNH2 = (1 - cosNH2) / cosNH2
@@ -177,7 +173,6 @@ def GTR(NdotHs, p_roughness, gamma=1.):
     Outputs:
         Ds              NxLx1 torch.tensor containing the microfacet distributions
     """
-    p_roughness = p_roughness.view(-1,1,1)
     cosNH2 = (NdotHs ** 2).clamp_(min=0., max=1.)
     p_roughness2 = p_roughness ** 2
     if gamma == 1.:
@@ -210,7 +205,7 @@ def SmithG1(NdotWs, p_roughness):
     # sin_thetas == 0 gets handled below. Trips up the sqrt() backprop otherwise
     sin_thetas = (1 - cos_thetas2 + (cos_thetas2 == 1).float()).sqrt()
     cot_thetas = cos_thetas / (sin_thetas)
-    prelims = cot_thetas / p_roughness.view(-1,1,1)
+    prelims = cot_thetas / p_roughness
     prelims2 = prelims**2
 
     Gs = (3.535 * prelims + 2.181 * prelims2) / (1 + 2.276 * prelims + 2.577 * prelims2)
@@ -226,21 +221,19 @@ def SmithG1(NdotWs, p_roughness):
 class CookTorrance(BrdfParametrization):
     def calculate_rhos(self, Ls, Vs, normals, parameters):
         Hs, NdotHs = BrdfParametrization._calculate_NdotHs(Ls, Vs, normals)
-        Vs = Vs.view(-1,1,3)
-        normals = normals.view(-1,1,3)
         NdotLs = inner_product(normals, Ls)
         NdotVs = inner_product(normals, Vs)
         VdotHs = inner_product(Vs, Hs)
 
-        p_diffuse = parameters['diffuse']
-        p_specular = parameters['specular']['albedo']
+        p_diffuse = parameters['diffuse'].view(1,-1,3)
+        p_specular = parameters['specular']['albedo'].view(1,-1,3)
         # somewhat non-standard, we parametrize roughness as its square root
         # this yields better resolution around zero
-        p_roughness = parameters['specular']['roughness'] ** 2
+        p_roughness = parameters['specular']['roughness'].view(1,-1,1) ** 2
 
         # fresnel term -- optional
         if 'eta' in parameters['specular']:
-            p_eta = parameters['specular']['eta']
+            p_eta = parameters['specular']['eta'].view(1,-1,1)
             Fs = Fresnel(VdotHs, p_eta)
         else:
             Fs = 1.
@@ -251,9 +244,9 @@ class CookTorrance(BrdfParametrization):
         Gs = SmithG1(NdotLs, p_roughness) * SmithG1(NdotVs, p_roughness)
 
         denominator = 4 * np.pi * NdotLs * NdotVs
-        CTs = p_specular.view(-1,1,3) * (Fs * Ds * Gs) / (denominator + (denominator == 0).float())
+        CTs = p_specular * (Fs * Ds * Gs) / (denominator + (denominator == 0).float())
 
-        rhos = p_diffuse.view(-1,1,3) / np.pi + CTs
+        rhos = p_diffuse / np.pi + CTs
 
         return rhos, NdotHs
     

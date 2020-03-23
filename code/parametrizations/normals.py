@@ -39,7 +39,6 @@ class PerPointNormals(NormalParametrization):
         self.base_normals = base_normals.detach()
         self.phis = torch.nn.Parameter(torch.zeros(nr_points, device=device))
         self.thetas = torch.nn.Parameter(torch.zeros(nr_points, device=device))
-        # TODO: initialize from the plane normals
 
     @lru_cache(maxsize=1)
     def normals(self):

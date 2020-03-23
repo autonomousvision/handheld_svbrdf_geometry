@@ -1,5 +1,5 @@
-occlusion_fattening = 8
-shadow_fattening = 8
+occlusion_fattening = 4
+shadow_fattening = 4
 device_name = 'cuda:0'
 
 path_localization = {
