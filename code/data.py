@@ -51,7 +51,7 @@ class ImageWrapper:
         self.meta_data = None
         self._K = None
         self._image = None
-        self._saturation_mask = None
+        # self._saturation_mask = None
 
     def get_intrinsics(self):
         if self._K is None:
@@ -70,7 +70,7 @@ class ImageWrapper:
             self.meta_data = ImageWrapper.load_metadata(self.image_file+".meta")
             exposure_time = self.meta_data['exposure_time_us'] * 1e-6
             dark_level = float(self.meta_data['black_level'])
-            saturation_mask = image_data.max(axis=2) >= 4094
+            # saturation_mask = image_data.max(axis=2) >= 4094
             image_data = np.clip((image_data.astype(np.float32) - dark_level),
                                 a_min=0.0, a_max=None) / exposure_time
             if self.original_vignetting is not None:
@@ -80,6 +80,10 @@ class ImageWrapper:
                     self.crop[1,0]:self.crop[1,1],
                     self.crop[0,0]:self.crop[0,1]
                 ]
+                # saturation_mask = saturation_mask[
+                #     self.crop[1,0]:self.crop[1,1],
+                #     self.crop[0,0]:self.crop[0,1]
+                # ]
             if self.down_sample is not None:
                 image_data = cv2.resize(
                     image_data,
@@ -88,6 +92,13 @@ class ImageWrapper:
                     fy=1./self.down_sample,
                     interpolation=cv2.INTER_AREA
                 )
+                # saturation_mask =  cv2.resize(
+                #     saturation_mask,
+                #     dsize=None,
+                #     fx=1./self.down_sample,
+                #     fy=1./self.down_sample,
+                #     interpolation=cv2.INTER_AREA
+                # )
             if self.reup_sample is not None:
                 image_data = cv2.resize(
                     image_data,
@@ -96,16 +107,23 @@ class ImageWrapper:
                     fy=self.reup_sample,
                     interpolation=cv2.INTER_CUBIC
                 )
+                # saturation_mask =  cv2.resize(
+                #     saturation_mask,
+                #     dsize=None,
+                #     fx=self.reup_sample,
+                #     fy=self.reup_sample,
+                #     interpolation=cv2.INTER_CUBIC
+                # )
             image = torch.tensor(np.transpose(image_data, (2,0,1)), dtype=torch.float32, device=self.device)
-            saturation_mask = torch.tensor(saturation_mask, dtype=torch.float32, device=self.device)
+            # saturation_mask = torch.tensor(saturation_mask, dtype=torch.float32, device=self.device)
             if not self.lazy:
                 self._image = image
-                self._saturation_mask = saturation_mask
+                # self._saturation_mask = saturation_mask
         else:
             image = self._image
-            saturation_mask = self._saturation_mask
+            # saturation_mask = self._saturation_mask
 
-        return image, saturation_mask
+        return image#, saturation_mask
 
 class ImageAdapter(ABC):
     @staticmethod
