@@ -44,19 +44,7 @@ def optimize(experiment_state, data_adapter, optimization_settings):
         if visualizer_dictionary[parameter] is not None
     ])
 
-    training_indices = []
-    training_light_infos = []
-    for image_index, image in enumerate(data_adapter.images):
-        if not image.is_val_view:
-            training_indices.append(image_index)
-            training_light_infos.append(image.light_info)
-        if image.is_ctr_view:
-            ctr_index = image_index
-    training_indices = torch.tensor(training_indices, dtype=torch.long, device=device)
-    training_light_infos = torch.tensor(training_light_infos, dtype=torch.long, device=device)
-    if training_light_infos.min() < 0:
-        error("Trying to reconstruct an image without a light source.")
-
+    training_indices, training_light_infos = data_adapter.get_training_info()
 
     optimization_loop = tqdm(range(iterations))
     for iteration in optimization_loop:

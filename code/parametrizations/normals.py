@@ -98,9 +98,7 @@ class HardLinkedNormals(NormalParametrization):
         pass
 
     def normals(self):
-        return self.location_parametrization.normal_image()[
-            self.location_parametrization.mask
-        ]
+        return self.location_parametrization.implied_normal_vector()
     
     def parameter_info(self):
         # we have no parameters

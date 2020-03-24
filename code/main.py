@@ -17,7 +17,7 @@ experiment_settings = ExperimentSettings({
     'data_settings': {
         'data_type': "XIMEA",
         'center_view': 180,
-        'nr_neighbours': 20, 
+        'nr_neighbours': 40, 
         'input_path': "<input_data_base_folder>/bunny/",
         'output_path': "<output_base_folder>/development_test/",
         'calibration_path_geometric': "<calibration_base_folder>/geometry/calib-20191002/",
@@ -78,7 +78,12 @@ experiment_settings = ExperimentSettings({
     },
     'optimization_steps': [
         {
-            'parameters': ['diffuse_materials', 'specular_weights', 'specular_materials']
+            'parameters': [
+                'diffuse_materials',
+                'specular_weights',
+                'specular_materials'
+            ],
+            'visualize_initial': True,
         },
     ],
 })
@@ -135,6 +140,11 @@ optimization_step_settings = experiment_settings.get('default_optimization_setti
 experiment_settings.check_stored("default_optimization_settings")
 experiment_settings.save("default_optimization_settings")
 
+experiment_state.visualize_statics(
+    experiment_settings.get('local_data_settings')['output_path'],
+    data_adapter
+)
+
 for step_index in range(len(experiment_settings.get('optimization_steps'))):
     step_state_folder = experiment_settings.get_state_folder("optimization_steps", step_index)
 
@@ -144,7 +154,9 @@ for step_index in range(len(experiment_settings.get('optimization_steps'))):
         experiment_state.visualize(
             experiment_settings.get('local_data_settings')['output_path'],
             step_index,
-            "initial",
+            "_initial",
+            data_adapter,
+            optimization_settings['losses']
         )
 
     if experiment_settings.check_stored("optimization_steps", step_index):
@@ -163,4 +175,5 @@ for step_index in range(len(experiment_settings.get('optimization_steps'))):
             experiment_settings.get('local_data_settings')['output_path'],
             step_index,
             experiment_settings.get_shorthand("optimization_steps", step_index),
+            data_adapter,
         )

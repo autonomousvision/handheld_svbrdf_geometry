@@ -2,6 +2,8 @@ import torch
 import os
 import pickle
 import numpy as np
+import cv2
+from matplotlib import pyplot as plt
 
 import general_settings
 from parametrizations.brdf import BrdfParametrizationFactory
@@ -11,11 +13,18 @@ from parametrizations.normals import NormalParametrizationFactory
 from parametrizations.materials import MaterialParametrizationFactory
 from parametrizations.locations import LocationParametrizationFactory
 from closed_form import closed_form_lambertian_solution
+from losses import LossFunctionFactory
 
 from utils.TOME import depth_reprojection_bound
 from utils.vectors import normalize, inner_product
 from utils.logging import error
 from utils.sentinels import OBSERVATION_OUT_OF_BOUNDS, OBSERVATION_MASKED_OUT, OBSERVATION_OCCLUDED, SIMULATION_SHADOWED
+from utils.visualization import draw_scene_preview, color_depths, color_depth_offsets, color_normals, curvature
+from utils.visualization import color_errors, color_base_weights
+from utils.export import export_pointcloud_as_ply
+
+def to_numpy(x):
+    return x.detach().cpu().numpy()
 
 class ExperimentState:
     def __init__(
@@ -98,7 +107,7 @@ class ExperimentState:
         elif initialization_settings['normals'] == "from_depth":
             self.normals.initialize(self.locations.implied_normal_vector())
 
-    def simulate(self, observation_indices, light_infos, shadow_cache=None):
+    def simulate(self, observation_indices, light_infos, shadow_cache=None, override=None):
         """
         Simulate the result of the current experiment state for a given observation index, including the shadow mask if requested
         """
@@ -120,9 +129,34 @@ class ExperimentState:
 
         obs_camloc = self.observation_poses.camlocs(observation_indices)
         view_directions = normalize(obs_camloc.view(-1,1,3) - surface_points[None])
-        surface_materials = self.materials.get_brdf_parameters()
-        surface_normals = self.normals.normals().view(1,-1,3)
-        surface_rhos, NdotHs = self.brdf.calculate_rhos(light_directions, view_directions, surface_normals, surface_materials)
+        if override is not None and "geometry" in override:
+            surface_normals = NormalParametrizationFactory("hard linked")(self.locations).normals()
+            brdf = BrdfParametrizationFactory("cook torrance F1")()
+            N, device = surface_normals.shape[0], surface_normals.device
+            surface_materials = {
+                "diffuse": torch.empty(N, 3, device=device).fill_(0.8),
+                "specular": {
+                    "albedo": torch.empty(N, 3, device=device).fill_(0.2),
+                    "roughness": torch.empty(N, 1, device=device).fill_(0.15 - 0.10*("1" in override)),
+                }
+            }
+        else:
+            surface_materials = self.materials.get_brdf_parameters()
+            if override is not None:
+                surface_materials = dict(surface_materials)
+                if override == "diffuse":
+                    surface_materials['specular'] = dict(surface_materials['specular'])
+                    surface_materials['specular']['albedo'] = torch.zeros_like(
+                        surface_materials['specular']['albedo']
+                    )
+                elif override == "specular":
+                    surface_materials['diffuse'] = torch.zeros_like(
+                        surface_materials['diffuse']
+                    )
+            surface_normals = self.normals.normals().view(1,-1,3)
+            brdf = self.brdf
+
+        surface_rhos, NdotHs = brdf.calculate_rhos(light_directions, view_directions, surface_normals, surface_materials)
 
         incident_light = light_intensities * inner_product(light_directions, surface_normals)
 
@@ -291,6 +325,215 @@ class ExperimentState:
                 occlusion_cache[observation_indices] = occlusion_masks
 
         return observations, occlusion_masks
+
+    def visualize_statics(self, output_path, data_adapter):
+        with torch.no_grad():
+            surface_points = self.locations.location_vector()
+
+            cv2.imwrite(
+                os.path.join(output_path, "mask.png"),
+                to_numpy(
+                    self.locations.create_image(
+                        torch.ones_like(surface_points)
+                    )
+                ) * 255
+            )
+        
+            observation_Rts = self.observation_poses.Rts()
+            for i, (elevation, azimuth) in enumerate(zip([90., 20.], [0., 70.])):
+                fig = draw_scene_preview(
+                    surface_points,
+                    data_adapter.center_invRt,
+                    observation_Rts,
+                    elevation=elevation,
+                    azimuth=azimuth,
+                )
+                plt.savefig(
+                    os.path.join(output_path, "camera_locations_%d.png" % i),
+                    bbox_inches='tight'
+                )
+                plt.close(fig)
+
+
+    def visualize(self, output_path, index, name, data_adapter, losses):
+        set_name = "%02d_%s" % (index, name)
+        with torch.no_grad():
+            # depth image
+            original_depths = self.locations.create_vector(data_adapter.center_depth)
+            offset = original_depths.min() * 0.95
+            scale = original_depths.max() * 1.05 - offset
+            depth_image_file = os.path.join(output_path, "depth_%s.png" % set_name)
+            depths = self.locations.implied_depth_vector()
+            cv2.imwrite(
+                depth_image_file,
+                to_numpy(self.locations.create_image(
+                    color_depths(depths, offset, scale),
+                    filler=255
+                ))
+            )
+
+            # depth change w.r.t. original
+            depth_change = depths - original_depths
+            depth_change_file = os.path.join(output_path, "depth_change_%s.png" % set_name)
+            cv2.imwrite(
+                depth_change_file,
+                to_numpy(self.locations.create_image(
+                    color_depth_offsets(depth_change) * 255,
+                    filler=255
+                ))
+            )
+
+            # geometry: save a rendered image with normals from depth and a uniform brdf
+            normals = self.normals.normals()
+            center_view_idx = [
+                i for i, view_info in enumerate(data_adapter.observation_views)
+                if view_info[0] == data_adapter.center_view
+            ][0]
+            training_indices, training_light_infos = data_adapter.get_training_info()
+            for i in range(1,3):
+                geometry_simulation = self.simulate(
+                    training_indices[center_view_idx,None],
+                    training_light_infos[center_view_idx,None],
+                    override="geometry_%d" % i
+                )[0]
+                geometry_image_file = os.path.join(
+                    output_path,
+                    "geometry%d_%s.png" % (i, set_name)
+                )
+                cv2.imwrite(
+                    geometry_image_file,
+                    to_numpy(self.locations.create_image(
+                        geometry_simulation * general_settings.intensity_scale,
+                        filler=255
+                    ))
+                )
+
+            if general_settings.save_clouds:
+                # depth cloud
+                export_pointcloud_as_ply(
+                    os.path.join(output_path, "pointcloud_%s.ply" % set_name),
+                    self.locations.location_vector(),
+                    normals=normals,
+                )
+
+            normals_file = os.path.join(output_path, "normals_%s.png" % set_name)
+            cv2.imwrite(
+                normals_file,
+                to_numpy(self.locations.create_image(
+                    color_normals(normals),
+                    filler=255
+                ))
+            )
+
+            normal_curvature = self.locations.create_vector(
+                curvature(self.locations.create_image(normals))
+            )
+            normal_curvature_file = os.path.join(output_path, "normals_curvature_%s.png" % set_name)
+            cv2.imwrite(
+                normal_curvature_file,
+                to_numpy(self.locations.create_image(
+                    color_errors(normal_curvature.sqrt_()),
+                    filler=255
+                ))
+            )
+
+            if hasattr(self.materials, 'base_weights'):
+                weight_file = os.path.join(output_path, "base_weights_%s.png" % set_name)
+                cv2.imwrite(
+                    weight_file,
+                    to_numpy(self.locations.create_image(
+                        color_base_weights(self.materials.base_weights),
+                        filler=255
+                    ))
+                )
+
+            simulations = self.simulate(
+                training_indices,
+                training_light_infos,
+                shadow_cache=None
+            )
+            observations, observation_occlusions = self.extract_observations(
+                data_adapter,
+                training_indices,
+                occlusion_cache=None
+            )
+            photo_loss = [x for x in losses if "photoconsistency" in x]
+            if len(photo_loss) > 0:
+                photo_loss = photo_loss[0]
+                photoconsistency_errors = LossFunctionFactory(
+                    photo_loss
+                )().evaluate(
+                    simulations,
+                    [observations, observation_occlusions],
+                    self,
+                    data_adapter
+                )
+            else:
+                photoconsistency_errors = None
+
+            os.makedirs(os.path.join(output_path, "fitting_set"), exist_ok=True)
+            for training_index in training_indices:
+                camera_index = data_adapter.observation_views[training_index][0]
+
+                cv2.imwrite(
+                   os.path.join(output_path, "fitting_set", "cam%05d_%s_predicted.png" % (camera_index, set_name)),
+                    to_numpy(self.locations.create_image(
+                        simulations[training_index] * general_settings.intensity_scale,
+                        filler=255
+                    ))
+                )
+                cv2.imwrite(
+                   os.path.join(output_path, "fitting_set", "cam%05d_%s_observed.png" % (camera_index, set_name)),
+                    to_numpy(self.locations.create_image(
+                        observations[training_index] * general_settings.intensity_scale,
+                        filler=255
+                    ))
+                )
+                
+                if photoconsistency_errors is not None:
+                    cv2.imwrite(
+                        os.path.join(output_path, "fitting_set", "cam%05d_%s_error.png" % (camera_index, set_name)),
+                        to_numpy(self.locations.create_image(
+                            color_errors(
+                                photoconsistency_errors[training_index] * general_settings.intensity_scale,
+                                scale=1,
+                            ),
+                            filler=255
+                        ))
+                    )
+
+            diffuse_simulation = self.simulate(
+                training_indices[center_view_idx,None],
+                training_light_infos[center_view_idx,None],
+                override="diffuse"
+            )[0]
+            diffuse_image_file = os.path.join(
+                output_path,
+                "diffuse_component_%s.png" % (set_name)
+            )
+            cv2.imwrite(
+                diffuse_image_file,
+                to_numpy(self.locations.create_image(
+                    diffuse_simulation * general_settings.intensity_scale,
+                    filler=255
+                ))
+            )
+            specular_simulation = self.simulate(
+                training_indices[center_view_idx,None],
+                training_light_infos[center_view_idx,None],
+                override="specular"
+            )[0]
+            specular_image_file = os.path.join(
+                output_path,
+                "specular_component_%s.png" % (set_name)
+            )
+            cv2.imwrite(
+                specular_image_file,
+                to_numpy(self.locations.create_image(
+                    specular_simulation * general_settings.intensity_scale,
+                    filler=255
+                ))
+            )
 
     def _get_named_fields(self):
         return {

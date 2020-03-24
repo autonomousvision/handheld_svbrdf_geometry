@@ -192,6 +192,22 @@ class ImageAdapter(ABC):
             error("Pose file '%s' does not exist." % pose_file)
         return pose
 
+    def get_training_info(self):
+        device = torch.device(general_settings.device_name)
+        training_indices = []
+        training_light_infos = []
+        for image_index, image in enumerate(self.images):
+            if not image.is_val_view:
+                training_indices.append(image_index)
+                training_light_infos.append(image.light_info)
+            if image.is_ctr_view:
+                ctr_index = image_index
+        training_indices = torch.tensor(training_indices, dtype=torch.long, device=device)
+        training_light_infos = torch.tensor(training_light_infos, dtype=torch.long, device=device)
+        if training_light_infos.min() < 0:
+            error("Trying to reconstruct an image without a light source.")
+        return training_indices, training_light_infos
+
     @abstractmethod
     def __init__(self, data_settings):
         pass

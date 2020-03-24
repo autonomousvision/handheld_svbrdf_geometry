@@ -61,15 +61,20 @@ else
     echo "Skimage          > Installing now (may take a while)..."
     conda install -c anaconda scikit-image --yes
 fi
+if conda list | grep -w "matplotlib" >/dev/null; then
+    echo "Matplotlib       > Already installed"
+else
+    echo "Matplotlib       > Installing now (may take a while)..."
+    conda install -c conda-forge matplotlib --yes
+fi
 if pip list | grep -w "opencv" >/dev/null; then
     echo "OpenCV           > Already installed"
 else
     echo "OpenCV           > Installing now (may take a while)..."
     pip install opencv-python
 fi
-echo "Pyrender         > Installing requirements."
+echo "Pyrender         > Ensuring requirements"
 pip install -r code/thirdparty/pyrender/requirements.txt >/dev/null
-echo ""
 
 
 # compile the CUDA parts written for this repository

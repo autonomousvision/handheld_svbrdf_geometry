@@ -100,7 +100,7 @@ class LocationParametrization(Parametrization):
 
     @lru_cache(maxsize=1)
     def implied_normal_vector(self):
-        return self.implied_normal_image()[self.mask]
+        return self.create_vector(self.implied_normal_image())
 
     @abstractmethod
     def device(self):
@@ -134,8 +134,10 @@ class DepthMapParametrization(LocationParametrization):
     def implied_depth_image(self):
         return self.depth
 
-    def create_image(self, measurements):
+    def create_image(self, measurements, filler=None):
         image = torch.zeros(self.mask.shape[0], self.mask.shape[1], measurements.shape[1], device=measurements.device)
+        if filler is not None:
+            image.fill_(filler)
         image[self.mask] = measurements
         return image
 
