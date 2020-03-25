@@ -198,8 +198,8 @@ class ExperimentState:
         projected = projected[..., :2] / projected_depth
         projected_p = projected.clone()
 
-        if hasattr(data_adapter,"compound_image_tensor"):
-            compound_image_tensor = data_adapter.compound_image_tensor
+        if hasattr(data_adapter,"compound_image_tensors") and observation_indices in data_adapter.compound_image_tensors:
+            compound_image_tensor = data_adapter.compound_image_tensors[observation_indices]
             if smoothing_radius is not None and smoothing_radius > 0:
                 weights = torch.ones(1,1,2*smoothing_radius+1,2*smoothing_radius+1).to(compound_image_tensor.device) / (2*smoothing_radius+1)**2
                 compound_image_tensor = torch.nn.functional.conv2d(
@@ -207,7 +207,7 @@ class ExperimentState:
                     weights, bias=None, padding=smoothing_radius
                 ).view(compound_image_tensor.shape)
             compound_H, compound_W = compound_image_tensor.shape[-2:]
-            compound_sizes = data_adapter.compound_image_tensor_sizes
+            compound_sizes = data_adapter.compound_image_tensor_sizes[observation_indices]
 
             projected += 0.5
             projected[...,0] /= compound_image_tensor.shape[-1]/2
@@ -260,8 +260,8 @@ class ExperimentState:
         out_of_bounds = (
             (projected_p[...,0] < 1) +
             (projected_p[...,1] < 1) +
-            (projected_p[...,0] >= data_adapter.compound_image_tensor_sizes[:,:1]) + 
-            (projected_p[...,1] >= data_adapter.compound_image_tensor_sizes[:,1:])
+            (projected_p[...,0] >= compound_sizes[:,:1]) + 
+            (projected_p[...,1] >= compound_sizes[:,1:])
         )[:,:,None] > 0
         observations.masked_fill_(out_of_bounds, OBSERVATION_OUT_OF_BOUNDS)
         observations.masked_fill_(out_of_bounds, OBSERVATION_OUT_OF_BOUNDS)
@@ -391,11 +391,13 @@ class ExperimentState:
                 i for i, view_info in enumerate(data_adapter.observation_views)
                 if view_info[0] == data_adapter.center_view
             ][0]
-            training_indices, training_light_infos = data_adapter.get_training_info()
+            device = torch.device(general_settings.device_name)
+            center_training_idx = torch.tensor([center_view_idx], device=device, dtype=torch.long)
+            center_training_light_info = torch.tensor([data_adapter.images[center_view_idx].light_info], device=device, dtype=torch.long)
             for i in range(1,3):
                 geometry_simulation = self.simulate(
-                    training_indices[center_view_idx,None],
-                    training_light_infos[center_view_idx,None],
+                    center_training_idx,
+                    center_training_light_info,
                     override="geometry_%d" % i
                 )[0]
                 geometry_image_file = os.path.join(
@@ -449,16 +451,28 @@ class ExperimentState:
                     ))
                 )
 
-            simulations = self.simulate(
-                training_indices,
-                training_light_infos,
-                shadow_cache=None
-            )
-            observations, observation_occlusions = self.extract_observations(
-                data_adapter,
-                training_indices,
-                occlusion_cache=None
-            )
+            training_indices_batches, training_light_infos_batches = data_adapter.get_training_info()
+            simulations = []
+            observations = []
+            occlusions = []
+            for training_indices, training_light_infos in zip(training_indices_batches, training_light_infos_batches):
+                batch_simulations = self.simulate(
+                    training_indices,
+                    training_light_infos,
+                    shadow_cache=None
+                )
+                batch_observations, batch_occlusions = self.extract_observations(
+                    data_adapter,
+                    training_indices,
+                    occlusion_cache=None
+                )
+                simulations.append(batch_simulations)
+                observations.append(batch_observations)
+                occlusions.append(batch_occlusions)
+            simulations = torch.cat(simulations, dim=0)
+            observations = torch.cat(observations, dim=0)
+            occlusions = torch.cat(occlusions, dim=0)
+
             photo_loss = [x for x in losses if "photoconsistency" in x]
             if len(photo_loss) > 0:
                 photo_loss = photo_loss[0]
@@ -466,7 +480,7 @@ class ExperimentState:
                     photo_loss
                 )().evaluate(
                     simulations,
-                    [observations, observation_occlusions],
+                    [observations, occlusions],
                     self,
                     data_adapter
                 )
@@ -474,7 +488,7 @@ class ExperimentState:
                 photoconsistency_errors = None
 
             os.makedirs(os.path.join(output_path, "fitting_set"), exist_ok=True)
-            for training_index in training_indices:
+            for training_index in range(len(simulations)):
                 camera_index = data_adapter.observation_views[training_index][0]
 
                 cv2.imwrite(
@@ -505,8 +519,8 @@ class ExperimentState:
                     )
 
             diffuse_simulation = self.simulate(
-                training_indices[center_view_idx,None],
-                training_light_infos[center_view_idx,None],
+                center_training_idx,
+                center_training_light_info,
                 override="diffuse"
             )[0]
             diffuse_image_file = os.path.join(
@@ -521,8 +535,8 @@ class ExperimentState:
                 ))
             )
             specular_simulation = self.simulate(
-                training_indices[center_view_idx,None],
-                training_light_infos[center_view_idx,None],
+                center_training_idx,
+                center_training_light_info,
                 override="specular"
             )[0]
             specular_image_file = os.path.join(

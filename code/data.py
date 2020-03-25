@@ -6,6 +6,7 @@ import cv2
 import torch
 import pickle
 import json
+from functools import lru_cache
 
 import general_settings
 from utils.logging import log, error
@@ -192,6 +193,7 @@ class ImageAdapter(ABC):
             error("Pose file '%s' does not exist." % pose_file)
         return pose
 
+    @lru_cache(maxsize=1)
     def get_training_info(self):
         device = torch.device(general_settings.device_name)
         training_indices = []
@@ -206,6 +208,15 @@ class ImageAdapter(ABC):
         training_light_infos = torch.tensor(training_light_infos, dtype=torch.long, device=device)
         if training_light_infos.min() < 0:
             error("Trying to reconstruct an image without a light source.")
+        batch_size = general_settings.batch_size
+        training_indices = [
+            training_indices[i0:min(i0+batch_size, len(training_indices))]
+            for i0 in range(0, len(training_indices), batch_size)
+        ]
+        training_light_infos = [
+            training_light_infos[i0:min(i0+batch_size, len(training_light_infos))]
+            for i0 in range(0, len(training_light_infos), batch_size)
+        ]
         return training_indices, training_light_infos
 
     @abstractmethod

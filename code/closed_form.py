@@ -15,24 +15,30 @@ def closed_form_lambertian_solution(experiment_state, data_adapter, sample_radiu
         observations = []
         occlusions = []
 
-        training_indices, training_light_infos = data_adapter.get_training_info()
+        training_indices_batches, training_light_infos_batches = data_adapter.get_training_info()
 
-        light_intensities, light_directions, shadows = experiment_state.light_parametrization.get_light_intensities(
-            experiment_state.locations, experiment_state.observation_poses.Rts(training_indices), light_infos=training_light_infos
-        )
-        light_intensities = light_intensities.transpose(0,1)
-        light_directions = light_directions.transpose(0,1)
-        shadows = shadows.transpose(0,1)
+        for batch_indices, batch_light_infos in zip(training_indices_batches, training_light_infos_batches):
+            batch_light_intensities, batch_light_directions, batch_shadows = experiment_state.light_parametrization.get_light_intensities(
+                experiment_state.locations, experiment_state.observation_poses.Rts(batch_indices), light_infos=batch_light_infos
+            )
+            light_intensities.append(batch_light_intensities.transpose(0,1))
+            light_directions.append(batch_light_directions.transpose(0,1))
+            shadows.append(batch_shadows.transpose(0,1))
 
+            batch_observations, batch_occlusions = experiment_state.extract_observations(
+                data_adapter,
+                batch_indices,
+                smoothing_radius=sample_radius,
+            )
+            batch_occlusions = (batch_occlusions + (batch_observations[...,1] == OBSERVATION_OUT_OF_BOUNDS)) > 0
+            observations.append(batch_observations.transpose(0,1))
+            occlusions.append(batch_occlusions.transpose(0,1))
 
-        observations, occlusions = experiment_state.extract_observations(
-            data_adapter,
-            training_indices,
-            smoothing_radius=sample_radius,
-        )
-        occlusions = (occlusions + (observations[...,1] == OBSERVATION_OUT_OF_BOUNDS)) > 0
-        observations = observations.transpose(0,1)
-        occlusions = occlusions.transpose(0,1)
+        light_intensities = torch.cat(light_intensities, dim=1)
+        light_directions = torch.cat(light_directions, dim=1)
+        shadows = torch.cat(shadows, dim=1)
+        observations = torch.cat(observations, dim=1)
+        occlusions = torch.cat(occlusions, dim=1)
 
         incident_light = ( # points x views x color channels x direction_ray
             light_intensities[:,:,:,None] * light_directions[:,:,None,:]

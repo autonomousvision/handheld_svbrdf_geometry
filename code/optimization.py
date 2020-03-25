@@ -44,36 +44,41 @@ def optimize(experiment_state, data_adapter, optimization_settings, output_path_
     loss_evolutions.update(dict([(losses[loss_idx][0], []) for loss_idx in range(len(losses))]))
     parameter_evolutions = defaultdict(lambda: [])
 
-    training_indices, training_light_infos = data_adapter.get_training_info()
+    training_indices_batches, training_light_infos_batches = data_adapter.get_training_info()
 
     optimization_loop = tqdm(range(iterations))
 
     for iteration in optimization_loop:
         optimizer.zero_grad()
 
-        simulations = experiment_state.simulate(
-            training_indices,
-            training_light_infos,
-            shadow_cache=shadow_cache
-        )
+        iteration_losses = defaultdict(lambda: 0)
+        for training_indices, training_light_infos in zip(training_indices_batches, training_light_infos_batches):
+            simulations = experiment_state.simulate(
+                training_indices,
+                training_light_infos,
+                shadow_cache=shadow_cache
+            )
 
-        observations = experiment_state.extract_observations(
-            data_adapter,
-            training_indices,
-            occlusion_cache=occlusion_cache
-        )
-        
-        total_loss = 0.0
-        for loss_index in range(len(losses)):
-            loss_name, loss_fcn, loss_weight = losses[loss_index]
-            this_loss = loss_fcn.evaluate(
-                simulations, observations, experiment_state, data_adapter
-            ).sum() * loss_weight
-            total_loss += this_loss
-            loss_evolutions[loss_name].append(this_loss.item())
-        total_loss.backward()
-        loss_evolutions["Total"].append(total_loss.item())
-
+            observations = experiment_state.extract_observations(
+                data_adapter,
+                training_indices,
+                occlusion_cache=occlusion_cache
+            )
+            
+            total_loss = 0.0
+            for loss_index in range(len(losses)):
+                loss_name, loss_fcn, loss_weight = losses[loss_index]
+                this_loss = loss_fcn.evaluate(
+                    simulations, observations, experiment_state, data_adapter
+                ).sum() * loss_weight
+                total_loss += this_loss
+                iteration_losses[loss_name] += this_loss.item()
+            total_loss.backward()
+            iteration_losses["Total"] += total_loss.item()
+            experiment_state.clear_parametrization_caches()
+            del simulations, observations, total_loss
+        for loss in iteration_losses:
+            loss_evolutions[loss].append(iteration_losses[loss])
 
         if ctr_index is not None:
             for parameter in parameter_dictionary['observation_poses']:
@@ -82,14 +87,12 @@ def optimize(experiment_state, data_adapter, optimization_settings, output_path_
 
         optimizer.step()
         experiment_state.enforce_parameter_bounds()
-        experiment_state.clear_parametrization_caches()
 
         if "photoconsistency L1" in loss_evolutions:
-            desc_prefix = "Photometric loss: %8.4f        " % loss_evolutions["photoconsistency L1"][-1]
+            desc_prefix = "Photometric L1 loss: %8.4f        " % iteration_losses["Total"]
         else:
             desc_prefix = ""
-        optimization_loop.set_description(desc_prefix + "Total loss: %8.4f" % total_loss.item())
-        del simulations, observations, total_loss
+        optimization_loop.set_description(desc_prefix + "Total loss: %8.4f" % iteration_losses["Total"])
 
         with torch.no_grad():
             for parameter in optimization_settings['parameters']:

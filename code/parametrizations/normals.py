@@ -6,8 +6,6 @@ from utils.logging import error
 from parametrizations.parametrization import Parametrization
 from utils.vectors import normalize, cross_product
 
-from functools import lru_cache
-
 class NormalParametrization(Parametrization):
     def __init__(self, location_parametrization=None):
         super().__init__()
@@ -40,7 +38,6 @@ class PerPointNormals(NormalParametrization):
         self.phis = torch.nn.Parameter(torch.zeros(nr_points, device=device))
         self.thetas = torch.nn.Parameter(torch.zeros(nr_points, device=device))
 
-    @lru_cache(maxsize=1)
     def normals(self):
         sinphi = self.phis.sin()
         cosphi = self.phis.cos()
@@ -82,7 +79,7 @@ class PerPointNormals(NormalParametrization):
         self.thetas = torch.nn.Parameter(thetas)
 
     def enforce_parameter_bounds(self):
-        self.base_normals[:,:] = normalize(self.normals().detach())
+        self.base_normals = normalize(self.normals().detach())
         self.phis.data.zero_()
         self.thetas.data.zero_()
 

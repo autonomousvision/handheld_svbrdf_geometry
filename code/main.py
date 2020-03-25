@@ -105,23 +105,30 @@ data_adapter = DataAdapterFactory(
 
 if not experiment_settings.get('data_settings')['lazy_image_loading']:
     device = torch.device(general_settings.device_name)
-    image_tensors = [observation.get_image() for observation in tqdm(data_adapter.images, desc="Preloading images") if not observation.is_val_view]
-    # now compact all observations into a single tensor (both intensities and saturations)
-    # and remove the old tensors
-    # this makes for MUCH faster access
-    compound_H = max([tensor.shape[-2] for tensor in image_tensors])
-    compound_W = max([tensor.shape[-1] for tensor in image_tensors])
-    C = len(image_tensors)
-    compound_images = torch.zeros(C, 3, compound_H, compound_W, dtype=torch.float, device=device)
-    compound_sizes = torch.zeros(C, 2, dtype=torch.long, device=device)
-    for i in range(len(image_tensors)):
-        src_tensor = image_tensors[i]
-        compound_images[i,:,:src_tensor.shape[-2], :src_tensor.shape[-1]] = src_tensor
-        compound_sizes[i,0] = src_tensor.shape[-1]
-        compound_sizes[i,1] = src_tensor.shape[-2]
-        del data_adapter.images[i]._image
-    data_adapter.compound_image_tensor = compound_images
-    data_adapter.compound_image_tensor_sizes = compound_sizes
+    image_tensors = [
+        observation.get_image()
+        for observation in tqdm(data_adapter.images, desc="Preloading training images")
+        if not observation.is_val_view
+    ]
+    # now compact all observations into a few big tensors and remove the old tensors
+    # this makes for much faster access/operations
+    data_adapter.compound_image_tensors = {}
+    data_adapter.compound_image_tensor_sizes = {}
+    training_indices_batches, _ = data_adapter.get_training_info()
+    for batch in training_indices_batches:
+        compound_H = max([image_tensors[i].shape[-2] for i in batch])
+        compound_W = max([image_tensors[i].shape[-1] for i in batch])
+        C = len(batch)
+        compound_images = torch.zeros(C, 3, compound_H, compound_W, dtype=torch.float, device=device)
+        compound_sizes = torch.zeros(C, 2, dtype=torch.long, device=device)
+        for idx, image_idx in enumerate(batch):
+            src_tensor = image_tensors[image_idx]
+            compound_images[idx,:,:src_tensor.shape[-2], :src_tensor.shape[-1]] = src_tensor
+            compound_sizes[idx,0] = src_tensor.shape[-1]
+            compound_sizes[idx,1] = src_tensor.shape[-2]
+            del data_adapter.images[image_idx]._image
+        data_adapter.compound_image_tensors[batch] = compound_images
+        data_adapter.compound_image_tensor_sizes[batch] = compound_sizes
     del image_tensors
 
 experiment_settings.save("data_settings")
