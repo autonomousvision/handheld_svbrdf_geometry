@@ -82,7 +82,7 @@ class PerPointNormals(NormalParametrization):
         self.thetas = torch.nn.Parameter(thetas)
 
     def enforce_parameter_bounds(self):
-        self.base_normals = normalize(self.normals().detach())
+        self.base_normals[:,:] = normalize(self.normals().detach())
         self.phis.data.zero_()
         self.thetas.data.zero_()
 

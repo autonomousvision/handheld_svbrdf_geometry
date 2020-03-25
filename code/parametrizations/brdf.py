@@ -5,8 +5,6 @@ from abc import abstractmethod, abstractstaticmethod
 from utils.vectors import inner_product, normalize
 from parametrizations.parametrization import Parametrization
 
-from functools import lru_cache
-
 class BrdfParametrization(Parametrization):
     @staticmethod
     def _calculate_NdotHs(Ls, Vs, normals):

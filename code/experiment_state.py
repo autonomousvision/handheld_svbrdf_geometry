@@ -96,7 +96,10 @@ class ExperimentState:
 
         if initialization_settings['specular'] == "hardcoded":
             self.materials.brdf_parameters['specular']['albedo'].data.fill_(0.5)
-            self.materials.brdf_parameters['specular']['roughness'].data.fill_(0.1)
+            roughness = self.materials.brdf_parameters['specular']['roughness']
+            roughness.data[:] = (
+                0.1 + 0.3 * torch.arange(start=0, end=roughness.shape[0], step=1).view(-1,1) / roughness.shape[0]
+            )
             if 'eta' in self.materials.brdf_parameters['specular']:
                 self.materials.brdf_parameters['specular']['eta'].data.fill_(1.5)
         else:
@@ -355,8 +358,7 @@ class ExperimentState:
                 plt.close(fig)
 
 
-    def visualize(self, output_path, index, name, data_adapter, losses):
-        set_name = "%02d_%s" % (index, name)
+    def visualize(self, output_path, set_name, data_adapter, losses):
         with torch.no_grad():
             # depth image
             original_depths = self.locations.create_vector(data_adapter.center_depth)

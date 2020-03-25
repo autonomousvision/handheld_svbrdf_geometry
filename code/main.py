@@ -71,7 +71,7 @@ experiment_settings = ExperimentSettings({
             "material sparsity": 1e-1,
             "material smoothness": 1e0
         },
-        "iterations": 1000,
+        "iterations": 100,
         'visualize_initial': False,
         'visualize_results': True,
     },
@@ -152,12 +152,13 @@ for step_index in range(len(experiment_settings.get('optimization_steps'))):
     if optimization_settings['visualize_initial']:
         experiment_state.visualize(
             experiment_settings.get('local_data_settings')['output_path'],
-            step_index,
-            "_initial",
+            "%02d__initial" % step_index,
             data_adapter,
             optimization_settings['losses']
         )
 
+    shorthand = experiment_settings.get_shorthand("optimization_steps", step_index)
+    set_name = "%02d_%s" % (step_index, shorthand)
     if experiment_settings.check_stored("optimization_steps", step_index):
         experiment_state.load(step_state_folder)
     else:
@@ -165,7 +166,10 @@ for step_index in range(len(experiment_settings.get('optimization_steps'))):
             experiment_state,
             data_adapter,
             optimization_settings,
-            visualization_output_path=experiment_settings.get('local_data_settings')['output_path']
+            output_path_structure=os.path.join(
+                experiment_settings.get('local_data_settings')['output_path'],
+                "evolution_%%s_%s.png" % set_name
+            )
         )
         experiment_state.save(step_state_folder)
     experiment_settings.save("optimization_steps", step_index)
@@ -173,7 +177,7 @@ for step_index in range(len(experiment_settings.get('optimization_steps'))):
     if optimization_settings['visualize_results']:
         experiment_state.visualize(
             experiment_settings.get('local_data_settings')['output_path'],
-            step_index,
-            experiment_settings.get_shorthand("optimization_steps", step_index),
+            set_name,
             data_adapter,
+            optimization_settings['losses']
         )

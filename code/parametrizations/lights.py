@@ -9,8 +9,6 @@ from utils.vectors import normalize_
 from utils.logging import error
 from utils.TOME import depth_reprojection_bound
 
-from functools import lru_cache
-
 # Point light parametrization should include: position, intensity, attenuationfrom abc import ABC, abstractmethod
 
 class LightParametrization(Parametrization):
@@ -168,9 +166,9 @@ class PointLight(LightParametrization):
 
     def parameter_info(self):
         return {
-            "light_positions": [self.positions, 0.01, lambda x: x],
-            "light_intensities": [self.intensities, 1.0, lambda x: x],
-            "light_attenuations": [self.attenuations, 0.01, lambda x:x],
+            "light_positions": [self.positions, 0.01, lambda x: x.detach().clone()],
+            "light_intensities": [self.intensities, 1.0, lambda x: x.detach().clone()],
+            "light_attenuations": [self.attenuations, 0.01, lambda x:x.detach().clone()],
         }
 
     def serialize(self):

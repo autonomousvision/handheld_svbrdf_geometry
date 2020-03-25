@@ -1,13 +1,14 @@
 import os
 import torch
 from tqdm import tqdm
-from losses import LossFunctionFactory
-import general_settings
-
+from collections import defaultdict
 from matplotlib import pyplot as plt
 import numpy as np
 
-def optimize(experiment_state, data_adapter, optimization_settings, visualization_output_path=None):
+from losses import LossFunctionFactory
+import general_settings
+
+def optimize(experiment_state, data_adapter, optimization_settings, output_path_structure=None):
     parameter_dictionary, learning_rate_dictionary, visualizer_dictionary = experiment_state.get_parameter_dictionaries()
     device = torch.device(general_settings.device_name)
     
@@ -41,20 +42,14 @@ def optimize(experiment_state, data_adapter, optimization_settings, visualizatio
     ctr_index = None
     loss_evolutions = {'Total': []}
     loss_evolutions.update(dict([(losses[loss_idx][0], []) for loss_idx in range(len(losses))]))
-    parameter_evolutions = dict([
-        (parameter, [])
-        for parameter in visualizer_dictionary
-        if visualizer_dictionary[parameter] is not None
-    ])
+    parameter_evolutions = defaultdict(lambda: [])
 
     training_indices, training_light_infos = data_adapter.get_training_info()
 
     optimization_loop = tqdm(range(iterations))
+
     for iteration in optimization_loop:
         optimizer.zero_grad()
-
-        simulations = []
-        observations = []
 
         simulations = experiment_state.simulate(
             training_indices,
@@ -76,8 +71,9 @@ def optimize(experiment_state, data_adapter, optimization_settings, visualizatio
             ).sum() * loss_weight
             total_loss += this_loss
             loss_evolutions[loss_name].append(this_loss.item())
-        loss_evolutions["Total"].append(total_loss.item())
         total_loss.backward()
+        loss_evolutions["Total"].append(total_loss.item())
+
 
         if ctr_index is not None:
             for parameter in parameter_dictionary['observation_poses']:
@@ -92,33 +88,54 @@ def optimize(experiment_state, data_adapter, optimization_settings, visualizatio
             desc_prefix = "Photometric loss: %8.4f        " % loss_evolutions["photoconsistency L1"][-1]
         else:
             desc_prefix = ""
-        optimization_loop.set_description(desc_prefix + "Total loss: %8.4f" % total_loss)
+        optimization_loop.set_description(desc_prefix + "Total loss: %8.4f" % total_loss.item())
+        del simulations, observations, total_loss
 
-        for parameter in parameter_evolutions:
-            parameter_evolutions[parameter].append(
-                visualizer_dictionary[parameter](
+        with torch.no_grad():
+            for parameter in optimization_settings['parameters']:
+                if visualizer_dictionary[parameter] is None:
+                    continue
+                visualized = visualizer_dictionary[parameter](
                     parameter_dictionary[parameter]
                 )
-            )
+                if isinstance(visualized, dict):
+                    for x in visualized:
+                        parameter_evolutions[x].append(
+                            visualized[x].view(1,-1)
+                        )
+                else:
+                    parameter_evolutions[parameter].append(
+                        visualized.view(1,-1)
+                    )
 
-        if (iteration + 1) % general_settings.evolution_plot_frequency == 0 and visualization_output_path is not None:
-            plt.figure("Losses")
-            plt.clf()
-            loss_names = []
-            loss_values = []
-            for loss_name in loss_evolutions:
-                loss_values.append(loss_evolutions[loss_name])
-                loss_names.append(loss_name)
-            plt.semilogy(
-                np.arange(
+            if (iteration + 1) % general_settings.evolution_plot_frequency == 0 and output_path_structure is not None:
+                plt.figure("Losses")
+                plt.clf()
+                loss_names = []
+                loss_values = []
+                for loss_name in loss_evolutions:
+                    loss_values.append(loss_evolutions[loss_name])
+                    loss_names.append(loss_name)
+                xvalues = np.arange(
                     1, len(loss_values[0])+1
-                ).reshape(len(loss_values[0]),1).repeat(len(loss_names),1),
-                np.array(loss_values).T
-            )
-            plt.legend(loss_names)
-            plt.savefig(os.path.join(visualization_output_path, "loss_evolution.png"))
+                ).reshape(len(loss_values[0]),1)
+                plt.semilogy(
+                    xvalues.repeat(len(loss_names),1),
+                    np.array(loss_values).T
+                )
+                plt.legend(loss_names)
+                plt.savefig(output_path_structure % "loss")
 
-            # plot the relevant evolutions:
-            #   --> the material evolutions, the average depth change, the average normal change?
+                for parameter in parameter_evolutions:
+                    plt.figure(parameter)
+                    plt.clf()
+                    plt.plot(
+                        xvalues.repeat(parameter_evolutions[parameter][0].shape[1],1),
+                        torch.cat(parameter_evolutions[parameter], dim=0).cpu().numpy(),
+                    )
+                    plt.savefig(output_path_structure % parameter)
 
         scheduler.step()
+    plt.close("Losses")
+    for parameter in parameter_evolutions:
+        plt.close(parameter)

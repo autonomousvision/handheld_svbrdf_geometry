@@ -115,9 +115,9 @@ class BaseSpecularMaterials(MaterialParametrization):
     
     def parameter_info(self):
         return {
-            "diffuse_materials": [self.brdf_parameters['diffuse'], 1e-2, lambda x: x.mean(dim=0, keepdim=True)],
+            "diffuse_materials": [self.brdf_parameters['diffuse'], 1e-2, lambda x: {"diffuse_albedo": x.mean(dim=0, keepdim=True)}],
             "specular_weights": [self.base_weights, 5e-2, lambda x: - (x * (x + (x == 0).float()).log()).sum(dim=1).mean()],
-            "specular_materials": [self.brdf_parameters['specular'].values(), 1e-2, lambda x: x],
+            "specular_materials": [list(self.brdf_parameters['specular'].values()), 1e-2, lambda x: {"specular_albedo": x[0].detach().clone(), "roughness": x[1].detach().clone()}]
         }
 
     def enforce_parameter_bounds(self):

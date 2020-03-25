@@ -1,5 +1,6 @@
 from general_settings import path_localization
 import collections.abc
+from collections import defaultdict
 import os
 import json
 from utils.logging import error
@@ -65,7 +66,23 @@ class ExperimentSettings:
             return name
         else:
             optimization_settings = self.get(name, index)
-            error("get_shorthand not implemented yet")
+            shorthand_base_dict = {
+                "light": "L",
+                "locations": "P",
+                "normals": "N",
+                "diffuse": "D",
+                "specular": "S",
+                "observation": "O",
+            }
+            shorthand_dict = defaultdict(lambda:[])
+            for l in optimization_settings['parameters']:
+                split = l.split("_")
+                shorthand_dict[split[0]].append(split[1][0] if len(split) > 0 else "")
+            shorthand = "".join([
+                shorthand_base_dict[name]+"".join(sorted(shorthand_dict[name]))
+                for name in sorted(shorthand_dict.keys())
+            ])
+            return shorthand
 
     def check_stored(self, name, index=None, non_critical=[]):
         """

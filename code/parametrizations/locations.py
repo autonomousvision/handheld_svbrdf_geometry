@@ -161,7 +161,7 @@ class DepthMapParametrization(LocationParametrization):
 
     def parameter_info(self):
         return {
-            "locations": [self.depth[self.mask], 1e-4, lambda x: None],
+            "locations": [self.depth[self.mask], 1e-4, None],
         }
 
     def serialize(self):
