@@ -72,7 +72,6 @@ experiment_settings = ExperimentSettings({
             "material smoothness": 1e0
         },
         "iterations": 1000,
-        "plotting_frequency": 1,
         'visualize_initial': False,
         'visualize_results': True,
     },
@@ -166,6 +165,7 @@ for step_index in range(len(experiment_settings.get('optimization_steps'))):
             experiment_state,
             data_adapter,
             optimization_settings,
+            visualization_output_path=experiment_settings.get('local_data_settings')['output_path']
         )
         experiment_state.save(step_state_folder)
     experiment_settings.save("optimization_steps", step_index)

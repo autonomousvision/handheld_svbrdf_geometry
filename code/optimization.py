@@ -1,11 +1,13 @@
+import os
 import torch
 from tqdm import tqdm
 from losses import LossFunctionFactory
 import general_settings
 
-torch.autograd.set_detect_anomaly(True)
+from matplotlib import pyplot as plt
+import numpy as np
 
-def optimize(experiment_state, data_adapter, optimization_settings):
+def optimize(experiment_state, data_adapter, optimization_settings, visualization_output_path=None):
     parameter_dictionary, learning_rate_dictionary, visualizer_dictionary = experiment_state.get_parameter_dictionaries()
     device = torch.device(general_settings.device_name)
     
@@ -37,7 +39,8 @@ def optimize(experiment_state, data_adapter, optimization_settings):
     shadow_cache = {}
     occlusion_cache = {}
     ctr_index = None
-    loss_evolutions = dict([(losses[loss_idx][0], []) for loss_idx in range(len(losses))])
+    loss_evolutions = {'Total': []}
+    loss_evolutions.update(dict([(losses[loss_idx][0], []) for loss_idx in range(len(losses))]))
     parameter_evolutions = dict([
         (parameter, [])
         for parameter in visualizer_dictionary
@@ -73,6 +76,7 @@ def optimize(experiment_state, data_adapter, optimization_settings):
             ).sum() * loss_weight
             total_loss += this_loss
             loss_evolutions[loss_name].append(this_loss.item())
+        loss_evolutions["Total"].append(total_loss.item())
         total_loss.backward()
 
         if ctr_index is not None:
@@ -97,7 +101,24 @@ def optimize(experiment_state, data_adapter, optimization_settings):
                 )
             )
 
-        if (iteration + 1) % optimization_settings['plotting_frequency'] == 0:
-            print("hi")
+        if (iteration + 1) % general_settings.evolution_plot_frequency == 0 and visualization_output_path is not None:
+            plt.figure("Losses")
+            plt.clf()
+            loss_names = []
+            loss_values = []
+            for loss_name in loss_evolutions:
+                loss_values.append(loss_evolutions[loss_name])
+                loss_names.append(loss_name)
+            plt.semilogy(
+                np.arange(
+                    1, len(loss_values[0])+1
+                ).reshape(len(loss_values[0]),1).repeat(len(loss_names),1),
+                np.array(loss_values).T
+            )
+            plt.legend(loss_names)
+            plt.savefig(os.path.join(visualization_output_path, "loss_evolution.png"))
+
+            # plot the relevant evolutions:
+            #   --> the material evolutions, the average depth change, the average normal change?
 
         scheduler.step()
