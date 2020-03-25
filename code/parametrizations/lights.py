@@ -96,10 +96,27 @@ class PointLight(LightParametrization):
                     ],
                     dtype=torch.float32,
                     device=rig_R.device
-                )[None]
+                ).repeat(light_Rs.shape[0], 1, 1)
                 light_Ps = light_Ks @ torch.cat([light_Rs, light_ts], dim=2)
+
+                # project the points onto the light cameras
+                # to make sure they are somewhat well-centered: scale focal distances and translate optical centers
+                projected = light_Ps[...,None,:3,:3] @ surface_points.view(1,-1,3,1) + light_Ps[...,None,:3,3:]
+                projected_depth = projected[:, :, 2:, 0]
+                projected = projected[:, :, :2, 0]/projected_depth
+                scales = projected.max(dim=1,keepdim=True)[0] - projected.min(dim=1,keepdim=True)[0]
+                scales = min(0.98 * virtualW / scales[...,:1], 0.98 * virtualH / scales[...,1:])
+                light_Ks[:,:2,:2] *= scales
+                light_Ps = light_Ks @ torch.cat([light_Rs, light_ts], dim=2)
+                projected = light_Ps[...,None,:3,:3] @ surface_points.view(1,-1,3,1) + light_Ps[...,None,:3,3:]
+                projected_depth = projected[:, :, 2:, 0]
+                projected = projected[:, :, :2, 0]/projected_depth
+                offsets = projected.min(dim=1,keepdim=True)[0]
+                light_Ks[:,0,2] -= offsets[:,0,0] - virtualW / 100
+                light_Ks[:,1,2] -= offsets[:,0,1] - virtualH / 100
+                light_Ps = light_Ks @ torch.cat([light_Rs, light_ts], dim=2)
+
                 light_invKRs = rig_invR @ light_Ks.inverse()
-            
                 bounded = depth_reprojection_bound(
                     depth_image,
                     ctr_P.view(1,3,4),
