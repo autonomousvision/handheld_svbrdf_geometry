@@ -39,12 +39,12 @@ def optimize(experiment_state, data_adapter, optimization_settings, output_path_
 
     shadow_cache = {}
     occlusion_cache = {}
-    ctr_index = None
     loss_evolutions = {'Total': []}
     loss_evolutions.update(dict([(losses[loss_idx][0], []) for loss_idx in range(len(losses))]))
     parameter_evolutions = defaultdict(lambda: [])
 
     training_indices_batches, training_light_infos_batches = data_adapter.get_training_info()
+    ctr_index = data_adapter.get_center_index()
 
     optimization_loop = tqdm(range(iterations))
 

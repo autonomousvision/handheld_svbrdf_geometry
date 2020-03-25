@@ -3,6 +3,7 @@ import os
 from tqdm import tqdm
 import cv2
 import torch
+import itertools
 
 from data import DataAdapterFactory
 from experiment_state import ExperimentState
@@ -108,14 +109,14 @@ if not experiment_settings.get('data_settings')['lazy_image_loading']:
     image_tensors = [
         observation.get_image()
         for observation in tqdm(data_adapter.images, desc="Preloading training images")
-        if not observation.is_val_view
     ]
     # now compact all observations into a few big tensors and remove the old tensors
     # this makes for much faster access/operations
     data_adapter.compound_image_tensors = {}
     data_adapter.compound_image_tensor_sizes = {}
     training_indices_batches, _ = data_adapter.get_training_info()
-    for batch in training_indices_batches:
+    testing_indices_batches, _ = data_adapter.get_testing_info()
+    for batch in itertools.chain(training_indices_batches, testing_indices_batches):
         compound_H = max([image_tensors[i].shape[-2] for i in batch])
         compound_W = max([image_tensors[i].shape[-1] for i in batch])
         C = len(batch)

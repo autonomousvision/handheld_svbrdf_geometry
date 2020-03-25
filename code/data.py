@@ -9,7 +9,7 @@ import json
 from functools import lru_cache
 
 import general_settings
-from utils.logging import log, error
+from utils.logging import log, error, log_singleton
 
 class ImageWrapper:
     @staticmethod
@@ -193,17 +193,24 @@ class ImageAdapter(ABC):
             error("Pose file '%s' does not exist." % pose_file)
         return pose
 
-    @lru_cache(maxsize=1)
-    def get_training_info(self):
+    def get_center_index(self):
+        center_indices = [i for i, image in enumerate(self.images) if image.is_ctr_view]
+        if len(center_indices) == 0:
+            log_singleton("no_center_view", "The center view is not in the observations")
+            return None
+        elif len(center_indices) > 1:
+            error("Multiple copies of the center view present")
+        else:
+            return center_indices[0]
+
+    def _get_info_set(self, criterion=lambda x: True):
         device = torch.device(general_settings.device_name)
         training_indices = []
         training_light_infos = []
         for image_index, image in enumerate(self.images):
-            if not image.is_val_view:
+            if criterion(image):
                 training_indices.append(image_index)
                 training_light_infos.append(image.light_info)
-            if image.is_ctr_view:
-                ctr_index = image_index
         training_indices = torch.tensor(training_indices, dtype=torch.long, device=device)
         training_light_infos = torch.tensor(training_light_infos, dtype=torch.long, device=device)
         if training_light_infos.min() < 0:
@@ -218,6 +225,14 @@ class ImageAdapter(ABC):
             for i0 in range(0, len(training_light_infos), batch_size)
         ]
         return training_indices, training_light_infos
+
+    @lru_cache(maxsize=1)
+    def get_training_info(self):
+        return self._get_info_set(criterion=lambda image: not image.is_val_view)
+
+    @lru_cache(maxsize=1)
+    def get_testing_info(self):
+        return self._get_info_set(criterion=lambda image: image.is_val_view)
 
     @abstractmethod
     def __init__(self, data_settings):

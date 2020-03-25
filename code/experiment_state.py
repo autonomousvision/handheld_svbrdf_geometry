@@ -451,72 +451,79 @@ class ExperimentState:
                     ))
                 )
 
-            training_indices_batches, training_light_infos_batches = data_adapter.get_training_info()
-            simulations = []
-            observations = []
-            occlusions = []
-            for training_indices, training_light_infos in zip(training_indices_batches, training_light_infos_batches):
-                batch_simulations = self.simulate(
-                    training_indices,
-                    training_light_infos,
-                    shadow_cache=None
-                )
-                batch_observations, batch_occlusions = self.extract_observations(
-                    data_adapter,
-                    training_indices,
-                    occlusion_cache=None
-                )
-                simulations.append(batch_simulations)
-                observations.append(batch_observations)
-                occlusions.append(batch_occlusions)
-            simulations = torch.cat(simulations, dim=0)
-            observations = torch.cat(observations, dim=0)
-            occlusions = torch.cat(occlusions, dim=0)
+            info_functions = {
+                "fitting_set": data_adapter.get_training_info,
+                "testing_set": data_adapter.get_testing_info,
+            }
+            for image_set in info_functions:
+                indices_batches, light_infos_batches = info_functions[image_set]()
+                simulations = []
+                observations = []
+                occlusions = []
+                indices = []
+                for batch_indices, batch_light_infos in zip(indices_batches, light_infos_batches):
+                    batch_simulations = self.simulate(
+                        batch_indices,
+                        batch_light_infos,
+                        shadow_cache=None
+                    )
+                    batch_observations, batch_occlusions = self.extract_observations(
+                        data_adapter,
+                        batch_indices,
+                        occlusion_cache=None
+                    )
+                    indices.extend([x for x in batch_indices])
+                    simulations.append(batch_simulations)
+                    observations.append(batch_observations)
+                    occlusions.append(batch_occlusions)
+                simulations = torch.cat(simulations, dim=0)
+                observations = torch.cat(observations, dim=0)
+                occlusions = torch.cat(occlusions, dim=0)
 
-            photo_loss = [x for x in losses if "photoconsistency" in x]
-            if len(photo_loss) > 0:
-                photo_loss = photo_loss[0]
-                photoconsistency_errors = LossFunctionFactory(
-                    photo_loss
-                )().evaluate(
-                    simulations,
-                    [observations, occlusions],
-                    self,
-                    data_adapter
-                )
-            else:
-                photoconsistency_errors = None
+                photo_loss = [x for x in losses if "photoconsistency" in x]
+                if len(photo_loss) > 0:
+                    photo_loss = photo_loss[0]
+                    photoconsistency_errors = LossFunctionFactory(
+                        photo_loss
+                    )().evaluate(
+                        simulations,
+                        [observations, occlusions],
+                        self,
+                        data_adapter
+                    )
+                else:
+                    photoconsistency_errors = None
 
-            os.makedirs(os.path.join(output_path, "fitting_set"), exist_ok=True)
-            for training_index in range(len(simulations)):
-                camera_index = data_adapter.observation_views[training_index][0]
+                os.makedirs(os.path.join(output_path, image_set), exist_ok=True)
+                for set_index, image_index in enumerate(indices):
+                    camera_index = data_adapter.observation_views[image_index][0]
 
-                cv2.imwrite(
-                   os.path.join(output_path, "fitting_set", "cam%05d_%s_predicted.png" % (camera_index, set_name)),
-                    to_numpy(self.locations.create_image(
-                        simulations[training_index] * general_settings.intensity_scale,
-                        filler=255
-                    ))
-                )
-                cv2.imwrite(
-                   os.path.join(output_path, "fitting_set", "cam%05d_%s_observed.png" % (camera_index, set_name)),
-                    to_numpy(self.locations.create_image(
-                        observations[training_index] * general_settings.intensity_scale,
-                        filler=255
-                    ))
-                )
-                
-                if photoconsistency_errors is not None:
                     cv2.imwrite(
-                        os.path.join(output_path, "fitting_set", "cam%05d_%s_error.png" % (camera_index, set_name)),
+                    os.path.join(output_path, image_set, "cam%05d_%s_predicted.png" % (camera_index, set_name)),
                         to_numpy(self.locations.create_image(
-                            color_errors(
-                                photoconsistency_errors[training_index] * general_settings.intensity_scale,
-                                scale=1,
-                            ),
+                            simulations[set_index] * general_settings.intensity_scale,
                             filler=255
                         ))
                     )
+                    cv2.imwrite(
+                    os.path.join(output_path, image_set, "cam%05d_%s_observed.png" % (camera_index, set_name)),
+                        to_numpy(self.locations.create_image(
+                            observations[set_index] * general_settings.intensity_scale,
+                            filler=255
+                        ))
+                    )
+                    
+                    if photoconsistency_errors is not None:
+                        cv2.imwrite(
+                            os.path.join(output_path, image_set, "cam%05d_%s_error.png" % (camera_index, set_name)),
+                            to_numpy(self.locations.create_image(
+                                color_errors(
+                                    photoconsistency_errors[set_index] * general_settings.intensity_scale,
+                                    scale=1,
+                                ),
+                                filler=255
+                            ))
+                        )
 
             diffuse_simulation = self.simulate(
                 center_training_idx,
