@@ -11,7 +11,8 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "env": {
-                "PYTHONPATH": "${workspaceFolder}/code/"
+                "PYTHONPATH": "${workspaceFolder}/code/",
+                "PYOPENGL_PLATFORM": "egl",
             },
             "cwd": "${workspaceFolder}/code/"
         },
