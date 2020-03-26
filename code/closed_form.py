@@ -5,7 +5,7 @@ from utils.vectors import normalize, inner_product
 from utils.sentinels import OBSERVATION_OUT_OF_BOUNDS
 import general_settings
 
-def closed_form_lambertian_solution(experiment_state, data_adapter, sample_radius=7):
+def closed_form_lambertian_solution(experiment_state, data_adapter, sample_radius=7, shadows_occlusions=True, verbose=True):
     device = torch.device(general_settings.device_name)
     # calculates the closed-form solution given the current state and the measurements
     with torch.no_grad():
@@ -19,7 +19,8 @@ def closed_form_lambertian_solution(experiment_state, data_adapter, sample_radiu
 
         for batch_indices, batch_light_infos in zip(training_indices_batches, training_light_infos_batches):
             batch_light_intensities, batch_light_directions, batch_shadows = experiment_state.light_parametrization.get_light_intensities(
-                experiment_state.locations, experiment_state.observation_poses.Rts(batch_indices), light_infos=batch_light_infos
+                experiment_state.locations, experiment_state.observation_poses.Rts(batch_indices), light_infos=batch_light_infos,
+                calculate_shadowing=shadows_occlusions
             )
             light_intensities.append(batch_light_intensities.transpose(0,1))
             light_directions.append(batch_light_directions.transpose(0,1))
@@ -29,6 +30,7 @@ def closed_form_lambertian_solution(experiment_state, data_adapter, sample_radiu
                 data_adapter,
                 batch_indices,
                 smoothing_radius=sample_radius,
+                calculate_occlusions=shadows_occlusions
             )
             batch_occlusions = (batch_occlusions + (batch_observations[...,1] == OBSERVATION_OUT_OF_BOUNDS)) > 0
             observations.append(batch_observations.transpose(0,1))
@@ -67,7 +69,7 @@ def closed_form_lambertian_solution(experiment_state, data_adapter, sample_radiu
         nr_its = 10*np.log(1-targeted_success_chance) / np.log(1 - (1-estimated_outlier_ratio) ** subset_size) if subset_size < observations.shape[1] else 1
         best_inlier_counts = torch.zeros(observations.shape[0], 1, 1).to(observations.device)-1
         best_inliers = torch.zeros(*observations.shape[:2], 1).to(observations.device)
-        ransac_loop = tqdm(range(int(nr_its)))
+        ransac_loop = tqdm(range(int(nr_its))) if verbose else range(int(nr_its))
         for iteration in ransac_loop:
             subset = np.random.choice(observations.shape[1], size=[subset_size], replace=False)
             subset = torch.tensor(subset, dtype=torch.long, device=observations.device)
@@ -88,7 +90,8 @@ def closed_form_lambertian_solution(experiment_state, data_adapter, sample_radiu
             best_inlier_counts = best_inlier_counts * (1-better_subset) + inlier_counts * better_subset
             best_inliers = best_inliers * (1-better_subset) + inliers * better_subset
 
-            ransac_loop.set_description(desc="Lambertian closed form | RANSAC total energy | avg inliers %8.5f" % best_inlier_counts.mean())
+            if verbose:
+                ransac_loop.set_description(desc="Lambertian closed form | RANSAC total energy | avg inliers %8.5f" % best_inlier_counts.mean())
 
         # now calculate the normal estimate for the best inlier group
         inlier_intensities = gray_light_intensities * best_inliers
@@ -98,11 +101,17 @@ def closed_form_lambertian_solution(experiment_state, data_adapter, sample_radiu
         inlier_normals = normalize((inlier_intensities_pinv @ inlier_observations).view(-1,3))
 
         albedos = []
+        residuals = []
+        inlier_mask = best_inliers * valid_mask
         for c in range(3):
-            c_light_intensities = inner_product(inlier_normals.view(-1,1,3), incident_light[:,:,c]) * valid_mask
-            c_observations = observations[:,:,c,None] * valid_mask
-            c_light_intensities_pinv = (c_light_intensities.transpose(1,2) @ c_light_intensities + invalids).inverse() @ c_light_intensities.transpose(1,2)
-            c_albedo = np.pi * (c_light_intensities_pinv @ c_observations).view(-1,1)
-            albedos.append(c_albedo)
+            c_light_intensities = inner_product(inlier_normals.view(-1,1,3), incident_light[:,:,c]) * inlier_mask
+            c_observations = observations[:,:,c,None] * inlier_mask
+            c_light_intensities_pinv = (c_light_intensities.transpose(1,2) @ c_light_intensities + inlier_invalids).inverse() @ c_light_intensities.transpose(1,2)
+            c_albedo = (c_light_intensities_pinv @ c_observations)
+            albedos.append(np.pi * c_albedo.view(-1,1))
+            c_residuals = (c_light_intensities @ c_albedo - c_observations)
+            residuals.append(c_residuals)
         albedos = torch.cat(albedos, dim=1)
-    return inlier_normals, albedos
+        residuals = torch.cat(residuals, dim=2)
+
+    return inlier_normals, albedos, best_inliers, residuals

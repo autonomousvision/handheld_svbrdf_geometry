@@ -73,6 +73,12 @@ else
     echo "OpenCV           > Installing now (may take a while)..."
     pip install opencv-python
 fi
+if pip list | grep -w "pymaxflow" >/dev/null; then
+    echo "PyMaxFlow        > Already installed"
+else
+    echo "PyMaxFlow        > Installing now (may take a while)..."
+    pip install pymaxflow
+fi
 echo "Pyrender         > Ensuring requirements"
 pip install -r code/thirdparty/pyrender/requirements.txt >/dev/null
 

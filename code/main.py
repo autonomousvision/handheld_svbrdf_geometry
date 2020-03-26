@@ -9,6 +9,7 @@ from data import DataAdapterFactory
 from experiment_state import ExperimentState
 from experiment_settings import ExperimentSettings
 from optimization import optimize
+from higo import higo_baseline
 import general_settings
 
 from utils.logging import error
@@ -143,14 +144,24 @@ else:
     experiment_state.save(initialization_state_folder)
     experiment_settings.save("initialization_settings")
 
-optimization_step_settings = experiment_settings.get('default_optimization_settings')
-experiment_settings.check_stored("default_optimization_settings")
-experiment_settings.save("default_optimization_settings")
-
 experiment_state.visualize_statics(
     experiment_settings.get('local_data_settings')['output_path'],
     data_adapter
 )
+
+initial_locations = experiment_state.locations
+higo_baseline(experiment_state, data_adapter, experiment_settings.get_state_folder("higo"))
+experiment_state.visualize(
+    experiment_settings.get('local_data_settings')['output_path'],
+    "higo_baseline",
+    data_adapter,
+    losses = []
+)
+experiment_state.locations = initial_locations
+
+optimization_step_settings = experiment_settings.get('default_optimization_settings')
+experiment_settings.check_stored("default_optimization_settings")
+experiment_settings.save("default_optimization_settings")
 
 for step_index in range(len(experiment_settings.get('optimization_steps'))):
     step_state_folder = experiment_settings.get_state_folder("optimization_steps", step_index)

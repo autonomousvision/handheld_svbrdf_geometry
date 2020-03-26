@@ -22,9 +22,7 @@ from utils.sentinels import OBSERVATION_OUT_OF_BOUNDS, OBSERVATION_MASKED_OUT, O
 from utils.visualization import draw_scene_preview, color_depths, color_depth_offsets, color_normals, curvature
 from utils.visualization import color_errors, color_base_weights
 from utils.export import export_pointcloud_as_ply
-
-def to_numpy(x):
-    return x.detach().cpu().numpy()
+from utils.conversion import to_numpy
 
 class ExperimentState:
     def __init__(
@@ -42,6 +40,17 @@ class ExperimentState:
         self.materials = materials
         self.observation_poses = observation_poses
         self.light_parametrization = light_parametrization
+
+    @staticmethod
+    def copy(other):
+        return ExperimentState(
+            other.locations,
+            other.normals,
+            other.brdf,
+            other.materials,
+            other.observation_poses,
+            other.light_parametrization,
+        )
 
     @staticmethod
     def create(parametrization_settings):
@@ -84,11 +93,8 @@ class ExperimentState:
             error("Only precalibrated lights are supported.")
 
         if any(["closed_form" in initialization_settings[entry] for entry in initialization_settings]):
-            # we require the closed form solution given these locations
-            closed_form_normals, closed_form_diffuse = closed_form_lambertian_solution(self, data_adapter)
+            closed_form_normals, closed_form_diffuse, _, _ = closed_form_lambertian_solution(self, data_adapter)
 
-        # below is some debug code for in-progress progress
-        
         if initialization_settings['diffuse'] == "from_closed_form":
             self.materials.initialize(self.locations.get_point_count(), closed_form_diffuse, self.locations.device())
         else:
@@ -269,63 +275,66 @@ class ExperimentState:
         # saturations.masked_fill_(projected[...,:1].abs() >= 0.99, OBSERVATION_OUT_OF_BOUNDS)
         # saturations.masked_fill_(projected[...,1:].abs() >= 0.99, OBSERVATION_OUT_OF_BOUNDS)
 
-        if observation_indices in occlusion_cache:
-            occlusion_masks = occlusion_cache[observation_indices]
-        else:
-            occlusion_fattening = general_settings.occlusion_fattening
-            depth_image = self.locations.create_image(surface_points.view(-1,3)) @ ctr_Rt[2:3,:3].T[None] + ctr_Rt[2:3,3:].T[None]
-            with torch.no_grad():
-                obs_invKR = obs_Rt[...,:3,:3].transpose(-1,-2) @ obs_K.inverse()
-                bounded = depth_reprojection_bound(
-                    depth_image.view(1,*depth_image.shape[:2]),
-                    ctr_P.view(1,3,4),
-                    obs_invKR.view(1,-1,3,3),
-                    obs_camloc.view(1,-1,3,1),
-                    compound_H,
-                    compound_W,
-                    0.250,
-                    1.500,
-                    0.010
-                ).view(-1,1,compound_H, compound_W)
-                zbuffer = torch.nn.functional.grid_sample(
-                    bounded,
-                    projected[:, None],
-                    mode="bilinear",
-                    align_corners=False,
-                )[:,0,0,:,None]
-                occlusion_mask = projected_depth >= zbuffer + 0.005
-                if occlusion_fattening is not None and occlusion_fattening > 0:
-                    # first, scatter the occlusion mask into the 'bounded' plane
-                    projected_pl = projected_p.round().long()
-                    projected_pl.clamp_(min=0)
-                    projected_pl[...,0].clamp_(max=compound_W-1)
-                    projected_pl[...,1].clamp_(max=compound_H-1)
-                    occluders = torch.zeros_like(bounded)
-                    lin_idces = projected_pl[...,0] + projected_pl[...,1] * compound_W
-                    C = bounded.shape[0]
-                    occluders.view(C,-1).scatter_(dim=1,index=lin_idces, src=occlusion_mask.view(C,-1).float())
-                    # then dilate only those pixels that caused occlusion
-                    weights = torch.ones(1,1,2*occlusion_fattening+1,2*occlusion_fattening+1).to(occluders.device)
-                    occluders.masked_fill_(bounded == 0, 0.)
-                    occluders_dilated = torch.nn.functional.conv2d(
-                        bounded * occluders, weights, bias=None, padding=occlusion_fattening
-                    )
-                    dilation_weights = torch.nn.functional.conv2d(
-                        occluders, weights, bias=None, padding=occlusion_fattening
-                    )
-                    occluders_dilated = occluders_dilated / torch.clamp(dilation_weights, min=1)
-                    fattened_bounded = torch.min(bounded, occluders_dilated + 1e3*(dilation_weights == 0).float())
-                    # then recalculate the occlusion
-                    fattened_zbuffer = torch.nn.functional.grid_sample(
-                        fattened_bounded,
+        if calculate_occlusions:
+            if observation_indices in occlusion_cache:
+                occlusion_masks = occlusion_cache[observation_indices]
+            else:
+                occlusion_fattening = general_settings.occlusion_fattening
+                depth_image = self.locations.create_image(surface_points.view(-1,3)) @ ctr_Rt[2:3,:3].T[None] + ctr_Rt[2:3,3:].T[None]
+                with torch.no_grad():
+                    obs_invKR = obs_Rt[...,:3,:3].transpose(-1,-2) @ obs_K.inverse()
+                    bounded = depth_reprojection_bound(
+                        depth_image.view(1,*depth_image.shape[:2]),
+                        ctr_P.view(1,3,4),
+                        obs_invKR.view(1,-1,3,3),
+                        obs_camloc.view(1,-1,3,1),
+                        compound_H,
+                        compound_W,
+                        0.250,
+                        1.500,
+                        0.010
+                    ).view(-1,1,compound_H, compound_W)
+                    zbuffer = torch.nn.functional.grid_sample(
+                        bounded,
                         projected[:, None],
                         mode="bilinear",
                         align_corners=False,
                     )[:,0,0,:,None]
-                    fattened_occlusion_mask = projected_depth >= fattened_zbuffer + 0.005
-                    occlusion_mask = fattened_occlusion_mask
-                occlusion_masks = occlusion_mask.view(C, -1)
-                occlusion_cache[observation_indices] = occlusion_masks
+                    occlusion_mask = projected_depth >= zbuffer + 0.005
+                    if occlusion_fattening is not None and occlusion_fattening > 0:
+                        # first, scatter the occlusion mask into the 'bounded' plane
+                        projected_pl = projected_p.round().long()
+                        projected_pl.clamp_(min=0)
+                        projected_pl[...,0].clamp_(max=compound_W-1)
+                        projected_pl[...,1].clamp_(max=compound_H-1)
+                        occluders = torch.zeros_like(bounded)
+                        lin_idces = projected_pl[...,0] + projected_pl[...,1] * compound_W
+                        C = bounded.shape[0]
+                        occluders.view(C,-1).scatter_(dim=1,index=lin_idces, src=occlusion_mask.view(C,-1).float())
+                        # then dilate only those pixels that caused occlusion
+                        weights = torch.ones(1,1,2*occlusion_fattening+1,2*occlusion_fattening+1).to(occluders.device)
+                        occluders.masked_fill_(bounded == 0, 0.)
+                        occluders_dilated = torch.nn.functional.conv2d(
+                            bounded * occluders, weights, bias=None, padding=occlusion_fattening
+                        )
+                        dilation_weights = torch.nn.functional.conv2d(
+                            occluders, weights, bias=None, padding=occlusion_fattening
+                        )
+                        occluders_dilated = occluders_dilated / torch.clamp(dilation_weights, min=1)
+                        fattened_bounded = torch.min(bounded, occluders_dilated + 1e3*(dilation_weights == 0).float())
+                        # then recalculate the occlusion
+                        fattened_zbuffer = torch.nn.functional.grid_sample(
+                            fattened_bounded,
+                            projected[:, None],
+                            mode="bilinear",
+                            align_corners=False,
+                        )[:,0,0,:,None]
+                        fattened_occlusion_mask = projected_depth >= fattened_zbuffer + 0.005
+                        occlusion_mask = fattened_occlusion_mask
+                    occlusion_masks = occlusion_mask.view(C, -1)
+                    occlusion_cache[observation_indices] = occlusion_masks
+        else:
+            occlusion_masks = torch.zeros_like(projected_depth)[...,0] == 1
 
         return observations, occlusion_masks
 

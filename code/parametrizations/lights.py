@@ -105,8 +105,10 @@ class PointLight(LightParametrization):
                 projected_depth = projected[:, :, 2:, 0]
                 projected = projected[:, :, :2, 0]/projected_depth
                 scales = projected.max(dim=1,keepdim=True)[0] - projected.min(dim=1,keepdim=True)[0]
-                scales = min(0.98 * virtualW / scales[...,:1], 0.98 * virtualH / scales[...,1:])
-                light_Ks[:,:2,:2] *= scales
+                scales[...,:1] /= virtualW * 0.98
+                scales[...,1:] /= virtualH * 0.98
+                scales = scales.max(dim=-1, keepdim=True)[0]
+                light_Ks[:,:2,:2] /= scales
                 light_Ps = light_Ks @ torch.cat([light_Rs, light_ts], dim=2)
                 projected = light_Ps[...,None,:3,:3] @ surface_points.view(1,-1,3,1) + light_Ps[...,None,:3,3:]
                 projected_depth = projected[:, :, 2:, 0]
@@ -177,7 +179,7 @@ class PointLight(LightParametrization):
                     shadow_mask = fattened_shadow_mask
                 calculated_shadowing = shadow_mask.view(C,-1)
         else:
-            calculated_shadowing = None
+            calculated_shadowing = torch.zeros_like(ray_lengths)[...,0] == 1
 
         return ray_intensities * ray_attenuations, ray_directions, calculated_shadowing
 
