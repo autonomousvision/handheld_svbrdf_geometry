@@ -116,7 +116,7 @@ class ExperimentState:
         elif initialization_settings['normals'] == "from_depth":
             self.normals.initialize(self.locations.implied_normal_vector())
 
-    def simulate(self, observation_indices, light_infos, shadow_cache=None, override=None):
+    def simulate(self, observation_indices, light_infos, shadow_cache=None, override=None, calculate_shadowing=True):
         """
         Simulate the result of the current experiment state for a given observation index, including the shadow mask if requested
         """
@@ -127,14 +127,17 @@ class ExperimentState:
         obs_Rt = self.observation_poses.Rts(observation_indices)
         shadow_cache_miss = not light_infos in shadow_cache
         light_intensities, light_directions, calculated_shadowing = self.light_parametrization.get_light_intensities(
-            self.locations, obs_Rt, light_infos=light_infos, calculate_shadowing=shadow_cache_miss
+            self.locations, obs_Rt, light_infos=light_infos, calculate_shadowing=calculate_shadowing and shadow_cache_miss
         )
 
-        if shadow_cache_miss:
-            shadow_mask = calculated_shadowing
-            shadow_cache[light_infos] = shadow_mask
+        if calculate_shadowing:
+            if shadow_cache_miss:
+                shadow_mask = calculated_shadowing
+                shadow_cache[light_infos] = shadow_mask
+            else:
+                shadow_mask = shadow_cache[light_infos]
         else:
-            shadow_mask = shadow_cache[light_infos]
+            shadow_mask = None
 
         obs_camloc = self.observation_poses.camlocs(observation_indices)
         view_directions = normalize(obs_camloc.view(-1,1,3) - surface_points[None])
@@ -170,7 +173,8 @@ class ExperimentState:
         incident_light = light_intensities * inner_product(light_directions, surface_normals)
 
         incident_light.clamp_(min=0.)
-        incident_light[shadow_mask] = 0.
+        if shadow_mask is not None:
+            incident_light[shadow_mask] = 0.
 
         simulation = surface_rhos * incident_light
 
@@ -367,7 +371,7 @@ class ExperimentState:
                 plt.close(fig)
 
 
-    def visualize(self, output_path, set_name, data_adapter, losses):
+    def visualize(self, output_path, set_name, data_adapter, losses, shadows_occlusions=True):
         with torch.no_grad():
             # depth image
             original_depths = self.locations.create_vector(data_adapter.center_depth)
@@ -407,7 +411,8 @@ class ExperimentState:
                 geometry_simulation = self.simulate(
                     center_training_idx,
                     center_training_light_info,
-                    override="geometry_%d" % i
+                    override="geometry_%d" % i,
+                    calculate_shadowing=False,
                 )[0]
                 geometry_image_file = os.path.join(
                     output_path,
@@ -474,12 +479,14 @@ class ExperimentState:
                     batch_simulations = self.simulate(
                         batch_indices,
                         batch_light_infos,
-                        shadow_cache=None
+                        shadow_cache=None,
+                        calculate_shadowing=shadows_occlusions
                     )
                     batch_observations, batch_occlusions = self.extract_observations(
                         data_adapter,
                         batch_indices,
-                        occlusion_cache=None
+                        occlusion_cache=None,
+                        calculate_occlusions=shadows_occlusions
                     )
                     indices.extend([x for x in batch_indices])
                     simulations.append(batch_simulations)
@@ -537,7 +544,8 @@ class ExperimentState:
             diffuse_simulation = self.simulate(
                 center_training_idx,
                 center_training_light_info,
-                override="diffuse"
+                override="diffuse",
+                calculate_shadowing=shadows_occlusions
             )[0]
             diffuse_image_file = os.path.join(
                 output_path,
@@ -553,7 +561,8 @@ class ExperimentState:
             specular_simulation = self.simulate(
                 center_training_idx,
                 center_training_light_info,
-                override="specular"
+                override="specular",
+                calculate_shadowing=shadows_occlusions
             )[0]
             specular_image_file = os.path.join(
                 output_path,

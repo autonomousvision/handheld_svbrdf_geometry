@@ -25,7 +25,7 @@ experiment_settings = ExperimentSettings({
         'calibration_path_geometric': "<calibration_base_folder>/geometry/calib-20191002/",
         'vignetting_file': '<calibration_base_folder>/photometric/20190822_vignettes_light_intensities_attenuation/vignetting.npz',
         'depth_folder': 'tsdf-fusion-depth_oldCV_40_views',
-        'center_stride': 2,
+        'center_stride': 4,
         'depth_scale': 1e-3,
         'light_scale': 1e0,
         'lazy_image_loading': False,
@@ -149,15 +149,14 @@ experiment_state.visualize_statics(
     data_adapter
 )
 
-initial_locations = experiment_state.locations
-higo_baseline(experiment_state, data_adapter, experiment_settings.get_state_folder("higo"))
-experiment_state.visualize(
+higo_results = higo_baseline(experiment_state, data_adapter, experiment_settings.get_state_folder("higo"))
+higo_results.visualize(
     experiment_settings.get('local_data_settings')['output_path'],
     "higo_baseline",
     data_adapter,
-    losses = []
+    losses = [],
+    shadows_occlusions=False
 )
-experiment_state.locations = initial_locations
 
 optimization_step_settings = experiment_settings.get('default_optimization_settings')
 experiment_settings.check_stored("default_optimization_settings")

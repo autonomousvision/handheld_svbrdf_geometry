@@ -103,7 +103,7 @@ def higo_baseline(experiment_state, data_adapter, cache_path):
         
         indices = torch.zeros(*mask.shape[:2],1).long().to(device) - 1
         indices[mask] = torch.arange(N_pixels).to(device)[:,None]
-        indices = torch.nn.functional.pad(indices, pad=(1,1,1,1), value=-1)
+        indices = torch.nn.functional.pad(indices, pad=(0,0,1,1,1,1), value=-1)
         neighbours = []
         for offset in [[-1,0],[1,0],[0,-1],[0,1]]:
             offset_pixels = pixels + 1 # because of the padding
@@ -222,28 +222,28 @@ def higo_baseline(experiment_state, data_adapter, cache_path):
             no_neighbour_node = graph.add_nodes(1)
             neighbours_g = to_numpy(neighbours)
             neighbours_g[neighbours_g < 0] = len(neighbours)
-            for hyp in tqdm(range(0,n_hyps+1), desc="Building optimization graph - smoothness weights"):
-                hyp_nodes = node_ids[:,hyp]
-                hyp_nodes_g = np.concatenate((
-                    hyp_nodes, no_neighbour_node
-                ), axis=0)
-                for n_idx in range(4):
-                    neighbour_ids = np.take(hyp_nodes_g, indices=neighbours_g[:, n_idx], axis=0)
-                    nodepairs = np.stack((
-                        hyp_nodes, neighbour_ids
-                    ), axis=1)
-                    edgeweights = np.array([lambda_s]).reshape((1,1))
-                    # restrict this to nodes that are actually candidates -- or at least somewhat close
-                    # otherwise we're just wasting memory
-                    hyp_depth = depth_min + hyp * step_size
-                    candidates = to_numpy(((hyp_depth >= depth_volume[:,0,0] - step_radius*step_size) * (hyp_depth <= depth_volume[:,-1,0] + step_radius*step_size)))
-                    if candidates.sum() > 0:
-                        graph.add_grid_edges(
-                            nodepairs[candidates],
-                            weights=edgeweights,
-                            structure=np.array([[0,0,0],[0,0,1],[0,0,0]]),
-                            symmetric=0
-                        )
+            node_ids_g = np.concatenate((
+                node_ids, np.ones((1,n_hyps+1), dtype=node_ids.dtype)*no_neighbour_node
+            ), axis=0)
+            for n_idx in range(4):
+                neighbour_ids = np.take(node_ids_g[:,:-1], indices=neighbours_g[:,n_idx], axis=0)
+                nodepairs = np.stack((
+                    node_ids[:,:-1], neighbour_ids
+                ), axis=2)
+                edgeweights = lambda_s
+                candidates = nodepairs[:,:,1] != no_neighbour_node
+                candidates = to_numpy(
+                    (depth_volume[:,0] - step_size * 3 <= depth_hypotheses[None])
+                    *
+                    (depth_volume[:,-1] + step_size * 3 >= depth_hypotheses[None])
+                ) * candidates
+                graph.add_grid_edges(
+                    nodepairs[candidates].reshape(-1,2),
+                    weights=edgeweights,
+                    structure=np.array([[0,0,0],[0,0,1],[0,0,0]]),
+                    symmetric=0
+                )
+
             print("Starting full maxflow calculation...")
             tic = time.time()
             max_flow = graph.maxflow()
@@ -355,12 +355,27 @@ def higo_baseline(experiment_state, data_adapter, cache_path):
     plt.savefig(os.path.join(cache_path, "higo_refinement_loss.png"))
     plt.close()
 
-    # now replace this in the experiment_state
-    old_locations = experiment_state.locations
-    experiment_state.locations = DepthMapParametrization()
-    experiment_state.locations.initialize(
-        old_locations.create_image(depth_estimate[:,0]).squeeze(),
-        old_locations.mask,
-        old_locations.invK,
-        old_locations.invRt,
+    # now return a new experiment_state
+    new_experiment_state = ExperimentState.copy(experiment_state)
+    new_experiment_state.locations = DepthMapParametrization()
+    new_experiment_state.locations.initialize(
+        experiment_state.locations.create_image(depth_estimate[:,0]).squeeze(),
+        experiment_state.locations.mask,
+        experiment_state.locations.invK,
+        experiment_state.locations.invRt,
     )
+    
+    winner_normals = torch.gather(normal_volume, dim=1, index=winners_graphcut[:,None,None].expand(-1,-1,3)).squeeze()
+    winner_diffuse = torch.gather(diffuse_volume, dim=1, index=winners_graphcut[:,None,None].expand(-1,-1,3)).squeeze()
+
+    new_experiment_state.normals = experiment_state.normals.__class__(new_experiment_state.locations)
+    new_experiment_state.normals.initialize(winner_normals)
+    new_experiment_state.materials = experiment_state.materials.__class__(new_experiment_state.brdf)
+    new_experiment_state.materials.initialize(
+        winner_diffuse.shape[0],
+        winner_diffuse,
+        winner_diffuse.device
+    )
+    new_experiment_state.materials.brdf_parameters['specular']['albedo'].data.zero_()
+    new_experiment_state.materials.brdf_parameters['specular']['roughness'].data.fill_(0.1)
+    return new_experiment_state
