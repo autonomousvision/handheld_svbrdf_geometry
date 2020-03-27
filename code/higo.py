@@ -15,29 +15,23 @@ from utils.conversion import to_numpy, to_torch
 from utils.depth_maps import depth_map_to_locations
 import general_settings
 
-def higo_baseline(experiment_state, data_adapter, cache_path):
+def higo_baseline(experiment_state, data_adapter, cache_path, higo_settings):
     if not isinstance(experiment_state.locations, DepthMapParametrization):
         error("Higo et al. 2009 requires a depth map parametrization.")
     
     os.makedirs(cache_path, exist_ok=True)
     device = torch.device(general_settings.device_name)
 
-    final_depth_file = os.path.join(cache_path, "depth_03_higo_refined.ply")
-    if os.path.exists(final_depth_file):
-        log("Higo et al. 2009 result already exists. Returning.")
-        return None
-
     with torch.no_grad():
-        # Higo et al. ICCV2009 parameters
-        step_size = 0.001 # 1mm
-        step_radius = 25
+        step_size = higo_settings['step_size']
+        step_radius = higo_settings['step_radius']
         depth_range = step_size * step_radius # 2.5cm
         nr_steps = 2*step_radius + 1
-        eta = 10 * general_settings.intensity_scale
-        lambda_n = 7.5
-        lambda_s = 3.0 * step_size * 1000
-        lambda_1 = 0.1
-        lambda_2 = 0.5
+        eta = higo_settings['eta'] * general_settings.intensity_scale
+        lambda_n = higo_settings['lambda_n']
+        lambda_s = higo_settings['lambda_s'] * step_size * 1000
+        lambda_1 = higo_settings['lambda_1']
+        lambda_2 = higo_settings['lambda_2']
 
         surface_constraint_threshold = 0.005 # 5mm
         surface_constraint_threshold = surface_constraint_threshold / (depth_range / nr_steps)

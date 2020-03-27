@@ -14,6 +14,8 @@ import general_settings
 
 from utils.logging import error
 
+from evaluation import evaluate_state
+
 # any key in here is replaced in actual path settings by its value
 experiment_settings = ExperimentSettings({
     'data_settings': {
@@ -51,6 +53,15 @@ experiment_settings = ExperimentSettings({
             "intensities": "<calibration_base_folder>/photometric/20190822_vignettes_light_intensities_attenuation/LED_light_intensities.npy",
             "attenuations": "<calibration_base_folder>/photometric/20190822_vignettes_light_intensities_attenuation/LED_angular_dependency.npy",
         }
+    },
+    'higo_baseline': {
+        'step_size': 0.001, #1 mm
+        'step_radius': 25,
+        'eta': 10,
+        'lambda_n': 7.5,
+        'lambda_s': 3.0,
+        'lambda_1': 0.1,
+        'lambda_2': 0.5,
     },
     'default_optimization_settings': {
         'parameters': [
@@ -153,8 +164,13 @@ experiment_state.visualize_statics(
 )
 
 
-if not experiment_settings.check_stored("optimization_steps", step_index):
-    higo_results = higo_baseline(experiment_state, data_adapter, experiment_settings.get_state_folder("higo"))
+if not experiment_settings.check_stored("higo_baseline"):
+    higo_results = higo_baseline(
+        experiment_state,
+        data_adapter,
+        experiment_settings.get_state_folder("higo"),
+        experiment_settings.get('higo_baseline')
+    )
     higo_results.visualize(
         experiment_settings.get('local_data_settings')['output_path'],
         "higo_baseline",
@@ -162,6 +178,7 @@ if not experiment_settings.check_stored("optimization_steps", step_index):
         losses = [],
         shadows_occlusions=False
     )
+    experiment_settings.save("higo_baseline")
 
 optimization_step_settings = experiment_settings.get('default_optimization_settings')
 experiment_settings.check_stored("default_optimization_settings")
