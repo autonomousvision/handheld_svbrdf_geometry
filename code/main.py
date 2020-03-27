@@ -68,12 +68,12 @@ experiment_settings = ExperimentSettings({
         'losses': {
             "photoconsistency L1": 1e-4,
             "geometric consistency": 1e1,
-            "depth compatibility": 1e10,
+            "depth compatibility": 1e2,
             "normal smoothness": 1e0,
             "material sparsity": 1e-1,
             "material smoothness": 1e0
         },
-        "iterations": 100,
+        "iterations": 1000,
         'visualize_initial': False,
         'visualize_results': True,
     },
@@ -82,7 +82,10 @@ experiment_settings = ExperimentSettings({
             'parameters': [
                 'diffuse_materials',
                 'specular_weights',
-                'specular_materials'
+                'specular_materials',
+                'normals',
+                'observation_poses',
+                'locations',
             ],
             'visualize_initial': True,
         },
@@ -149,14 +152,14 @@ experiment_state.visualize_statics(
     data_adapter
 )
 
-higo_results = higo_baseline(experiment_state, data_adapter, experiment_settings.get_state_folder("higo"))
-higo_results.visualize(
-    experiment_settings.get('local_data_settings')['output_path'],
-    "higo_baseline",
-    data_adapter,
-    losses = [],
-    shadows_occlusions=False
-)
+# higo_results = higo_baseline(experiment_state, data_adapter, experiment_settings.get_state_folder("higo"))
+# higo_results.visualize(
+#     experiment_settings.get('local_data_settings')['output_path'],
+#     "higo_baseline",
+#     data_adapter,
+#     losses = [],
+#     shadows_occlusions=False
+# )
 
 optimization_step_settings = experiment_settings.get('default_optimization_settings')
 experiment_settings.check_stored("default_optimization_settings")

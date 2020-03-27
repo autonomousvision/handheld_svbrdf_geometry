@@ -67,20 +67,21 @@ class ExperimentSettings:
         else:
             optimization_settings = self.get(name, index)
             shorthand_base_dict = {
-                "light": "L",
                 "locations": "P",
                 "normals": "N",
                 "diffuse": "D",
                 "specular": "S",
                 "observation": "O",
+                "light": "L",
             }
             shorthand_dict = defaultdict(lambda:[])
             for l in optimization_settings['parameters']:
                 split = l.split("_")
-                shorthand_dict[split[0]].append(split[1][0] if len(split) > 0 else "")
+                shorthand_dict[split[0]].append(split[1][0] if len(split) > 1 else "")
             shorthand = "".join([
                 shorthand_base_dict[name]+"".join(sorted(shorthand_dict[name]))
-                for name in sorted(shorthand_dict.keys())
+                for name in shorthand_base_dict.keys()
+                if name in shorthand_dict
             ])
             return shorthand
 

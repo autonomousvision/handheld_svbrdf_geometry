@@ -37,7 +37,7 @@ class PoseParametrization(Parametrization):
 
 class QuaternionPoseParametrization(PoseParametrization):
     def initialize(self, Rs, ts):
-        self.qs = torch.nn.Parameter(R_to_quaternion(Rs).view(-1,4))
+        self.qs = torch.nn.Parameter(R_to_quaternion(Rs).view(-1,4).detach().clone())
         self.ts = torch.nn.Parameter(ts.view(-1,3,1))
 
     @lru_cache(maxsize=1)

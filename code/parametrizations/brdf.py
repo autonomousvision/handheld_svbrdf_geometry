@@ -175,7 +175,8 @@ def GTR(NdotHs, p_roughness, gamma=1.):
     p_roughness2 = p_roughness ** 2
     if gamma == 1.:
         cs = (p_roughness2 - 1) / p_roughness2.log()
-        Ds = cs / (1 + (p_roughness2 - 1) * cosNH2)
+        Ds = cs / (1 + (p_roughness2 - 1) * cosNH2 + (cosNH2 == 1).float())
+        Ds[cosNH2 == 1.] = (-1 / p_roughness2.log() / p_roughness2).repeat(cosNH2.shape[0],1,1)[cosNH2 == 1.]
     else:
         cs = (gamma - 1) * (p_roughness2 - 1) / (1 - p_roughness2 ** (1 - gamma))
         Ds = cs / ((1 + (p_roughness2 - 1) * cosNH2) ** gamma)
@@ -257,7 +258,7 @@ class CookTorrance(BrdfParametrization):
     def enforce_brdf_parameter_bounds(self, parameters):
         parameters['diffuse'].data.clamp_(min=0.0)
         parameters['specular']['albedo'].data.clamp_(min=0.0)
-        parameters['specular']['roughness'].data.clamp_(min=1e-6, max=1 - 1e-6)
+        parameters['specular']['roughness'].data.clamp_(min=1e-2, max=1 - 1e-2)
         if 'eta' in parameters['specular']:
             parameters['specular']['eta'].data.clamp_(min=1.0001, max=2.999)
 

@@ -8,10 +8,14 @@ import numpy as np
 from losses import LossFunctionFactory
 import general_settings
 
+from utils.logging import error
+
+# torch.autograd.set_detect_anomaly(True)
+
 def optimize(experiment_state, data_adapter, optimization_settings, output_path_structure=None):
     parameter_dictionary, learning_rate_dictionary, visualizer_dictionary = experiment_state.get_parameter_dictionaries()
     device = torch.device(general_settings.device_name)
-    
+
     parameter_groups = []
     for parameter in optimization_settings['parameters']:
         if not parameter in parameter_dictionary:
@@ -20,6 +24,14 @@ def optimize(experiment_state, data_adapter, optimization_settings, output_path_
             'params': parameter_dictionary[parameter],
             'lr': learning_rate_dictionary[parameter],
         })
+
+    for parameter in optimization_settings['parameters']:
+        if not parameter in parameter_dictionary:
+            error("Cannot optimize over %s, as it is not part of the chosen parametrization." % parameter)
+        parameters = parameter_dictionary[parameter]
+        if not isinstance(parameters, list):
+            parameters = [parameters]
+        [error("cannot optimize over '%s[%d]': not a leaf variable." % (parameter, idx)) for idx, x in enumerate(parameters) if not x.is_leaf]
 
     optimizer = torch.optim.Adam(parameter_groups, betas=[0.9, 0.9], eps=1e-3)
     iterations = optimization_settings['iterations']
@@ -89,7 +101,7 @@ def optimize(experiment_state, data_adapter, optimization_settings, output_path_
         experiment_state.enforce_parameter_bounds()
 
         if "photoconsistency L1" in loss_evolutions:
-            desc_prefix = "Photometric L1 loss: %8.4f        " % iteration_losses["Total"]
+            desc_prefix = "Photometric L1 loss: %8.4f        " % iteration_losses["photoconsistency L1"]
         else:
             desc_prefix = ""
         optimization_loop.set_description(desc_prefix + "Total loss: %8.4f" % iteration_losses["Total"])
