@@ -56,6 +56,7 @@ def optimize(experiment_state, data_adapter, optimization_settings, output_path_
     parameter_evolutions = defaultdict(lambda: [])
 
     training_indices_batches, training_light_infos_batches = data_adapter.get_training_info()
+    total_training_views = sum([len(training_indices) for training_indices in training_indices_batches])
     ctr_index = data_adapter.get_center_index()
 
     optimization_loop = tqdm(range(iterations))
@@ -82,7 +83,7 @@ def optimize(experiment_state, data_adapter, optimization_settings, output_path_
                 loss_name, loss_fcn, loss_weight = losses[loss_index]
                 this_loss = loss_fcn.evaluate(
                     simulations, observations, experiment_state, data_adapter
-                ).sum() * loss_weight
+                ).sum() * loss_weight * len(training_indices) / total_training_views
                 total_loss += this_loss
                 iteration_losses[loss_name] += this_loss.item()
             total_loss.backward()
