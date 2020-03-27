@@ -25,7 +25,7 @@ experiment_settings = ExperimentSettings({
         'calibration_path_geometric': "<calibration_base_folder>/geometry/calib-20191002/",
         'vignetting_file': '<calibration_base_folder>/photometric/20190822_vignettes_light_intensities_attenuation/vignetting.npz',
         'depth_folder': 'tsdf-fusion-depth_oldCV_40_views',
-        'center_stride': 4,
+        'center_stride': 2,
         'depth_scale': 1e-3,
         'light_scale': 1e0,
         'lazy_image_loading': False,
@@ -152,14 +152,16 @@ experiment_state.visualize_statics(
     data_adapter
 )
 
-# higo_results = higo_baseline(experiment_state, data_adapter, experiment_settings.get_state_folder("higo"))
-# higo_results.visualize(
-#     experiment_settings.get('local_data_settings')['output_path'],
-#     "higo_baseline",
-#     data_adapter,
-#     losses = [],
-#     shadows_occlusions=False
-# )
+
+if not experiment_settings.check_stored("optimization_steps", step_index):
+    higo_results = higo_baseline(experiment_state, data_adapter, experiment_settings.get_state_folder("higo"))
+    higo_results.visualize(
+        experiment_settings.get('local_data_settings')['output_path'],
+        "higo_baseline",
+        data_adapter,
+        losses = [],
+        shadows_occlusions=False
+    )
 
 optimization_step_settings = experiment_settings.get('default_optimization_settings')
 experiment_settings.check_stored("default_optimization_settings")
@@ -170,19 +172,19 @@ for step_index in range(len(experiment_settings.get('optimization_steps'))):
 
     optimization_settings = experiment_settings.get("optimization_steps", step_index)
 
-    if optimization_settings['visualize_initial']:
-        experiment_state.visualize(
-            experiment_settings.get('local_data_settings')['output_path'],
-            "%02d__initial" % step_index,
-            data_adapter,
-            optimization_settings['losses']
-        )
-
     shorthand = experiment_settings.get_shorthand("optimization_steps", step_index)
     set_name = "%02d_%s" % (step_index, shorthand)
     if experiment_settings.check_stored("optimization_steps", step_index):
         experiment_state.load(step_state_folder)
     else:
+        if optimization_settings['visualize_initial']:
+            experiment_state.visualize(
+                experiment_settings.get('local_data_settings')['output_path'],
+                "%02d__initial" % step_index,
+                data_adapter,
+                optimization_settings['losses']
+            )
+
         optimize(
             experiment_state,
             data_adapter,
@@ -192,13 +194,14 @@ for step_index in range(len(experiment_settings.get('optimization_steps'))):
                 "evolution_%%s_%s.png" % set_name
             )
         )
-        experiment_state.save(step_state_folder)
-    experiment_settings.save("optimization_steps", step_index)
 
-    if optimization_settings['visualize_results']:
-        experiment_state.visualize(
-            experiment_settings.get('local_data_settings')['output_path'],
-            set_name,
-            data_adapter,
-            optimization_settings['losses']
-        )
+        if optimization_settings['visualize_results']:
+            experiment_state.visualize(
+                experiment_settings.get('local_data_settings')['output_path'],
+                set_name,
+                data_adapter,
+                optimization_settings['losses']
+            )
+        experiment_state.save(step_state_folder)
+        experiment_settings.save("optimization_steps", step_index)
+
