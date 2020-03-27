@@ -20,7 +20,7 @@ if conda info --env | grep -w "$conda_env_name" >/dev/null; then
     echo "Already exists."
 else    # if the env does not exist.
     echo "Creating minimal environment (this might take a while) ... "
-    conda create -n $conda_env_name python=3.8 --yes >/dev/null
+    conda create -n $conda_env_name python=3.7 --yes >/dev/null
     echo "Created successfully."
 fi
 echo ""
@@ -78,6 +78,12 @@ if pip list | grep -w "pymaxflow" >/dev/null; then
 else
     echo "PyMaxFlow        > Installing now (may take a while)..."
     pip install pymaxflow
+fi
+if pip list | grep -w "open3d" >/dev/null; then
+    echo "Open3D           > Already installed"
+else
+    echo "Open3D           > Installing now (may take a while)..."
+    pip install open3d
 fi
 echo "Pyrender         > Ensuring requirements"
 pip install -r code/thirdparty/pyrender/requirements.txt >/dev/null
