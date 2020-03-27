@@ -163,22 +163,27 @@ experiment_state.visualize_statics(
     data_adapter
 )
 
-
+higo_state_folder = experiment_settings.get_state_folder("higo")
 if not experiment_settings.check_stored("higo_baseline"):
-    higo_results = higo_baseline(
+    experiment_state = higo_baseline(
         experiment_state,
         data_adapter,
-        experiment_settings.get_state_folder("higo"),
+        higo_state_folder,
         experiment_settings.get('higo_baseline')
     )
-    higo_results.visualize(
+    experiment_state.visualize(
         experiment_settings.get('local_data_settings')['output_path'],
         "higo_baseline",
         data_adapter,
         losses = [],
         shadows_occlusions=False
     )
+    experiment_state.save(higo_state_folder)
     experiment_settings.save("higo_baseline")
+else:
+    experiment_state.load(higo_state_folder)
+evaluate_state("higo baseline", "bunny", experiment_state)
+experiment_state.load(initialization_state_folder)
 
 optimization_step_settings = experiment_settings.get('default_optimization_settings')
 experiment_settings.check_stored("default_optimization_settings")
@@ -221,4 +226,4 @@ for step_index in range(len(experiment_settings.get('optimization_steps'))):
             )
         experiment_state.save(step_state_folder)
         experiment_settings.save("optimization_steps", step_index)
-
+    evaluate_state("Proposed", "bunny", experiment_state)
