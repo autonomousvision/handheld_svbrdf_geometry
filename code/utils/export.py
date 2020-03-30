@@ -1,7 +1,16 @@
 import numpy as np
 
 def export_pointcloud_as_ply(filename, points, normals=None, colors=None):
-    # points, normals, colors: Nx3 tensors
+    """
+    Save a set of points, optionally with normals and colors, to a .ply file.
+    The file is binary.
+
+    Inputs:
+        filename            string containing the output path
+        points              Nx3 torch.tensor containing XYZ locations
+        [normals]           Nx3 torch.tensor containing normal vectors
+        [colors]            Nx3 torch.tensor containing BGR color information
+    """
     dtype = {
         'names': ['x', 'y', 'z', ],
         'formats': ['f4', 'f4', 'f4', ]
@@ -25,9 +34,9 @@ def export_pointcloud_as_ply(filename, points, normals=None, colors=None):
         point_cloud['nz'] = normals[:, 2]
     if colors is not None:
         colors = colors.detach().cpu().numpy()
-        point_cloud['red'] = colors[:, 0]
+        point_cloud['red'] = colors[:, 2]
         point_cloud['green'] = colors[:, 1]
-        point_cloud['blue'] = colors[:, 2]
+        point_cloud['blue'] = colors[:, 0]
 
     with open(filename, "wt") as fh:
         fh.write("ply\n")

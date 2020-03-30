@@ -15,7 +15,17 @@ class LossFunction(ABC):
     def evaluate(self, simulations, observations, experiment_state, data_adapter):
         """
         Should return an un-reducted loss calculation, i.e. an image or sets of images (resp. a vector/set of vectors)
-        This can then either be reducted or visualized.
+        This can then either be sum-reducted or visualized.
+
+        Inputs:
+            simulations         [Cx]Nx3 torch.tensor with simulated intensities
+            observations        python tuple containing
+                observations        [Cx]Nx3 torch.tensor with observed intensities
+                occlusions          [Cx]N torch.tensor with occlusion indicators
+            experiment_state
+            data_adapter
+        Outputs:
+            errors              [Cx]Nx1 torch.tensor with the calculated loss values
         """
         pass
 
@@ -97,6 +107,12 @@ class MaterialWeightSmoothnessLoss(LossFunction):
 
 
 def LossFunctionFactory(name):
+    """
+    Creates LossFunction objects from a name.
+    Note that, for correct behaviour, the names of
+    photoconsistency terms should always start with
+    'photoconsistency'.
+    """
     valid_dict = {
         "photoconsistency L1": PhotoconsistencyL1Loss,
         "geometric consistency": GeometricConsistencyLoss,

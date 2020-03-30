@@ -6,6 +6,17 @@ import json
 from utils.logging import error
 
 def localize_settings(settings, local_paths):
+    """
+    Localizes the dictionary recursively, by replacing any string values containing <localization> keys.
+    The replacement is done on a deep copy, which is returned.
+
+    Inputs:
+        settings        python dict
+        local_paths     python dict containing the localization translations
+
+    Outputs:
+        local_settings  translated version of settings
+    """
     local_settings = dict(settings)
     for path_key in local_paths:
         for data_key in local_settings:
@@ -17,6 +28,9 @@ def localize_settings(settings, local_paths):
 
 
 def recursive_update(dictionary, updates):
+    """
+    Internal helper function to recursively update nested dictionaries in-place.
+    """
     dictionary = dict(dictionary)
     for key, value in updates.items():
         if isinstance(value, collections.abc.Mapping):
@@ -24,7 +38,6 @@ def recursive_update(dictionary, updates):
         else:
             dictionary[key] = value
     return dictionary
-
 
 class ExperimentSettings:
     def __init__(self, settings):
@@ -35,6 +48,9 @@ class ExperimentSettings:
         self.settings['local_initialization_settings'] = localize_settings(self.get('initialization_settings'), path_localization)
 
     def save(self, name, index=None):
+        """
+        Save the given subsettings to file, depending on local_data_settings -> output_path
+        """
         full_name = name + ("" if index is None else "_%d" % index)
         os.makedirs(self.get('local_data_settings')['output_path'], exist_ok=True)
         settings_file = os.path.join(self.get('local_data_settings')['output_path'], "%s.json" % full_name)
@@ -54,6 +70,11 @@ class ExperimentSettings:
         )
 
     def get(self, name, index=None):
+        """
+        Get the specified subsettings.
+        In the case of optimization_step settings, the default_optimization_settings are cloned, updated with the
+        specified step index' settings, and returned.
+        """
         subsettings = self.settings[name]
         if index is not None:
             subsettings = subsettings[index]
@@ -62,6 +83,11 @@ class ExperimentSettings:
         return subsettings
 
     def get_shorthand(self, name, index=None):
+        """
+        Get a representative shorthand for the given subsettings.
+        Mostly for the optimization steps subsettings, where a shorthand string is built.
+        For those, capital letters represent major aspects, and small letters respective minor aspects.
+        """
         if name != "optimization_steps" or index is None:
             return name
         else:

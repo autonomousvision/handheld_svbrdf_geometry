@@ -11,14 +11,28 @@ from utils.conversion import to_numpy, to_o3d
 
 gt_scan_folder = "/is/rg/avg/projects/mobile_lightstage/simon_scans"
 
-def refine_registration(source, target, distance_threshold, Tinit=np.eye(4)):
-  result = o3d.registration.registration_icp(
-      source, target, distance_threshold, Tinit, o3d.registration.TransformationEstimationPointToPlane(),
-      criteria=o3d.registration.ICPConvergenceCriteria(max_iteration=1000)
-  )
-  return result.transformation
+def refine_registration(target, source, distance_threshold, Tinit=np.eye(4)):
+    """
+    Using ICP, register two nearly-registered point clouds onto eachother.
+
+    Inputs:
+        source, target          o3d.geometry.Pointclouds
+        distance_threshold      Distance threshold for the ICP algorithm
+        [Tinit]                 4x4 np.ndarray containing an initial estimate. Defaults to identity.
+    
+    Outputs:
+        transformation          4x4 np.ndarray that transforms points in the source to the target domain
+    """
+    result = o3d.registration.registration_icp(
+        target, source, distance_threshold, Tinit, o3d.registration.TransformationEstimationPointToPlane(),
+        criteria=o3d.registration.ICPConvergenceCriteria(max_iteration=1000)
+    )
+    return result.transformation
 
 class CustomShaderCache():
+    """
+    Helper class for custom pyrender shader functions.
+    """
     def __init__(self):
         self.program = None
     
@@ -32,9 +46,20 @@ class CustomShaderCache():
         return self.program
 
 def render_depth_normals(vertices, faces, normals, K, camera_pose, image_shape):
-    # vertices  ... N x 3
-    # triangles ... M x 3
-    # data      ... height x width x channels
+    """
+    Using pyrender, render a mesh into depth and normal images.
+
+    Inputs:
+        vertices, faces, normals        Nx3 np.ndarrays
+        K                               3x3 np.ndarray with the intrinsic image
+        camera_pose                     3x4 np.ndarray with the camera pose
+        image_shape                     (height, width) python tuple
+    
+    Outputs:
+        depth                           HxW np.ndarray with the depth map
+        normals                         HxWx3 np.ndarray with the respective normals
+                                            Invalid (or absent) normals are zero.
+    """
 
     vertices = vertices @ camera_pose[:3,:3].T + camera_pose[:3,3:].T
     vertices[:, 1:] *= -1
@@ -63,6 +88,11 @@ def render_depth_normals(vertices, faces, normals, K, camera_pose, image_shape):
     return normals, depth
 
 def evaluate_state(evaluation_name, object_name, experiment_state):
+    """
+    Evaluate the current experiment_state with the relevant ground truth.
+    Performs registration refinement on the point clouds, and then calculates
+    average geometric accuracy and normal angle (in the image domain).
+    """
     gt_scan_file = os.path.join(gt_scan_folder, "manual_scan_alignment", "%s_manual.ply" % object_name)
     if not os.path.exists(gt_scan_file):
         error("WARNING> GT scan for %s not available" % object_name)

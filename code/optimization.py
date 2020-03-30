@@ -10,9 +10,12 @@ import general_settings
 
 from utils.logging import error
 
-# torch.autograd.set_detect_anomaly(True)
-
 def optimize(experiment_state, data_adapter, optimization_settings, output_path_structure=None):
+    """
+    Optimize the current experiment_state, given the observations in data_adapter and the optimization_settings.
+    Optionally saves optimization progress plots to the output_path_structure, which is formatted as
+    output_path_structure % plot_name.
+    """
     parameter_dictionary, learning_rate_dictionary, visualizer_dictionary = experiment_state.get_parameter_dictionaries()
     device = torch.device(general_settings.device_name)
 

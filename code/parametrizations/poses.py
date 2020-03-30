@@ -8,6 +8,10 @@ import torch
 from functools import lru_cache
 
 class PoseParametrization(Parametrization):
+    """
+    Parametrization subclass encoding a set of camera poses.
+    """
+
     @abstractmethod
     def initialize(self, Rs, ts):
         pass
@@ -36,6 +40,9 @@ class PoseParametrization(Parametrization):
 
 
 class QuaternionPoseParametrization(PoseParametrization):
+    """
+    PoseParametrization that encodes orientations as quaternions, and locations as straight vectors.
+    """
     def initialize(self, Rs, ts):
         self.qs = torch.nn.Parameter(R_to_quaternion(Rs).view(-1,4).detach().clone())
         self.ts = torch.nn.Parameter(ts.view(-1,3,1))

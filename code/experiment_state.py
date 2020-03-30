@@ -118,7 +118,9 @@ class ExperimentState:
 
     def simulate(self, observation_indices, light_infos, shadow_cache=None, override=None, calculate_shadowing=True):
         """
-        Simulate the result of the current experiment state for a given observation index, including the shadow mask if requested
+        Simulate the result of the current experiment state for a given set of observation indices and light infos.
+        Including the shadow mask if requested, True by default.
+        Shadows can be cached persistently by passing a cache dictionary to shadow_cache.
         """
         if shadow_cache is None:
             shadow_cache = {}
@@ -186,7 +188,9 @@ class ExperimentState:
 
     def extract_observations(self, data_adapter, observation_indices, calculate_occlusions=True, occlusion_cache=None, smoothing_radius=None):
         """
-        Get the relevant observed values for a given observation index, including the occlusion mask if requested
+        Get the relevant observed values for a given observation index.
+        Including the occlusion mask if requested, True by default.
+        Occlusions can be cached persistently by passing a cache dictionary to occlusion_cache.
         """
         if occlusion_cache is None:
             occlusion_cache = {}
@@ -343,6 +347,12 @@ class ExperimentState:
         return observations, occlusion_masks
 
     def visualize_statics(self, output_path, data_adapter):
+        """
+        Visualize some static experiment aspects to file:
+            - a rough idea of the object surface
+            - observation camera poses
+            - reference camera pose
+        """
         with torch.no_grad():
             surface_points = self.locations.location_vector()
 
@@ -372,6 +382,16 @@ class ExperimentState:
 
 
     def visualize(self, output_path, set_name, data_adapter, losses, shadows_occlusions=True):
+        """
+        Visualize the current experiment_state to file:
+            - depth estimate and its change from the initial depth
+            - normal estimate and its curvature
+            - geometry rendering based on depth and normals-from-depth for the center view, if present
+            - base_weight estimate, if the MaterialParametrization has them
+            - simulated and extracted observations, as well as the residual error
+                map if a photoconsistency loss term is present
+            - diffuse and specular components of the above simulation for the center view, if present
+        """
         with torch.no_grad():
             # depth image
             original_depths = self.locations.create_vector(data_adapter.center_depth)

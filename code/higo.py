@@ -16,6 +16,16 @@ from utils.depth_maps import depth_map_to_locations
 import general_settings
 
 def higo_baseline(experiment_state, data_adapter, cache_path, higo_settings):
+    """
+    Reimplementation of the Higo et al. 2009 paper
+        Tomoaki Higo, Yasuyuki Matsushita, Neel Joshi, and Katsushi Ikeuchi
+        A hand-held photometric stereo camera for 3-d modeling
+        ICCV2009
+
+    Uses the PyMaxFlow library for graphcut problem: http://pmneila.github.io/PyMaxflow/.
+    This library is installed as a python package by the installEnv.sh script.
+    """
+
     if not isinstance(experiment_state.locations, DepthMapParametrization):
         error("Higo et al. 2009 requires a depth map parametrization.")
     

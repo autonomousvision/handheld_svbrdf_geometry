@@ -7,6 +7,11 @@ from parametrizations.parametrization import Parametrization
 from utils.vectors import normalize, cross_product
 
 class NormalParametrization(Parametrization):
+    """
+    Parametrization subclass representing the normals for all scene points.
+    It depends on the relevant LocationParametrization for initialization.
+    """
+
     def __init__(self, location_parametrization=None):
         super().__init__()
         if location_parametrization is None:
@@ -28,8 +33,10 @@ class NormalParametrization(Parametrization):
 
 class PerPointNormals(NormalParametrization):
     """
-    It parametrizes over an extra rotation of the current normal estimates
-    To avert gimbal lock, it constantly reparametrizes to zero delta angles
+    A single, completely independent normal for every point in the scene.
+    Optimization over these normals is done by rotations around the
+    Y and Z axis. To prevent gimbal lock, these rotations are applied to the
+    underlying normals in enforce_parameter_bounds, and subsequently set to zero.
     """
     def initialize(self, base_normals):
         nr_points = self.location_parametrization.get_point_count()
@@ -85,9 +92,9 @@ class PerPointNormals(NormalParametrization):
 
 class HardLinkedNormals(NormalParametrization):
     """
-    Normals are calculated straight from the depth.
-    This module has no parameters. Instead, normals are backpropagated
-    to the depth parameters.
+    Normals for all scene points are those implied by the LocationParametrization.
+    This module has no parameters. Instead, gradients are backpropagated to the
+    depth parameters automatically.
     """
 
     def initialize(self):

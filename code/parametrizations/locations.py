@@ -10,14 +10,32 @@ from utils.vectors import inner_product, cross_product, normalize, norm
 from functools import lru_cache
 
 class LocationParametrization(Parametrization):
+    """
+    Parametrization base class for scene point locations.
+    It supports getting a set of representative scene points, as well as the
+    implied depth and normal image.
+    """
+
     @abstractmethod
     def initialize(self, depth, mask, invK, invRt):
+        """
+        Initialize this LocationParametrization in-place.
+
+        Inputs:
+            depth           HxW torch.tensor containing a depth image
+            mask            HxW (bool) torch.tensor indicating which pixels are valid
+            invK, invRt     torch.tensors containing the inverse intrinsics and extrinsics
+        """
         pass
     
     @abstractmethod
     def location_vector(self):
         """
-        Get the set of 3D point locations that comprise the scene
+        Get the set of 3D point locations that comprise the scene.
+        The size and ordering of this tensor should be consistent.
+
+        Outputs:
+            locations       Nx3 torch.tensor containing the locations.
         """
         pass
 
@@ -25,17 +43,36 @@ class LocationParametrization(Parametrization):
     def create_image(self, measurements):
         """
         Yields an image with the relevant measurements filled into the correct pixels.
+
+        Inputs:
+            measurements    Nx3 torch.tensor containing the measurements
+        
+        Outputs:
+            image           HxW torch.tensor containing the measurements in the relevant pixels
         """
         pass
 
     def create_vector(self, measurement_image):
         """
         Yields a vector with the relevant measurements extract from the correct pixels.
+
+        Inputs:
+            image           HxW torch.tensor containing the measurements in the relevant pixels
+        
+        Outputs:
+            measurements    Nx3 torch.tensor containing the measurements
         """
         return 
 
     @lru_cache(maxsize=1)
     def implied_depth_image(self):
+        """
+        Returns the depth image implied by the current state of the LocationParametrization.
+        
+        Outputs:
+            depth           HxW torch.tensor containing the depth values
+        """
+
         location_image = self.create_image(self.location_vector())
         R = self.invRt[:3,:3].T
         t = -R @ self.invRt[:3,3:]
@@ -44,10 +81,22 @@ class LocationParametrization(Parametrization):
 
     @lru_cache(maxsize=1)
     def implied_depth_vector(self):
+        """
+        Returns a list of depth values for the current state.
+        
+        Outputs:
+            depths          Nx1 torch.tensor containing the depth values
+        """
         return self.create_vector(self.implied_depth_image())
 
     @lru_cache(maxsize=1)
     def implied_normal_image(self):
+        """
+        Returns the normal image implied by the current state of the LocationParametrization.
+        
+        Outputs:
+            normals         HxWx3 torch.tensor containing the depth values
+        """
         location_image = self.create_image(self.location_vector()) # HxWx3
         if self.mask[-1,:].sum() + self.mask[:,-1].sum() > 0:
             error("The mask should not reach the bottom and right image edges.")
@@ -100,12 +149,21 @@ class LocationParametrization(Parametrization):
 
     @lru_cache(maxsize=1)
     def implied_normal_vector(self):
+        """
+        Returns a list of normal values for the current state.
+        
+        Outputs:
+            normals         Nx3 torch.tensor containing the depth values
+        """
         return self.create_vector(self.implied_normal_image())
 
     @abstractmethod
     def device(self):
         """
         Get the torch.device the parameters live on.
+
+        Outputs:
+            device          torch.device
         """
         return self.depth.device
 
@@ -113,12 +171,21 @@ class LocationParametrization(Parametrization):
     def get_point_count(self):
         """
         Get the number of 3D points in the scene
+
+        Outputs:
+            N               python scalar
         """
         pass
 
 
 
 class DepthMapParametrization(LocationParametrization):
+    """
+    LocationParametrization that represents the scene structure with a depth map.
+    The intrinsics and extrinsics of this view cannot be optimized over; only the
+    values of the depth map are returned from parameter_info.
+    """
+
     def initialize(self, depth, mask, invK, invRt):
         self.depth = torch.nn.Parameter(depth)
         self.mask = (mask.view(depth.shape[:2]) > 0).to(depth.device)
@@ -179,6 +246,10 @@ class DepthMapParametrization(LocationParametrization):
         self.depth.data.clamp_(min=0.)
 
 class PlaneParametrization(LocationParametrization):
+    """
+    LocationParametrization that represents the scene structure with a plane equation.
+    """
+
     def initialize(self, depth, mask, invK, invRt):
         self.invK = invK.to(depth.device)
         self.invRt = invRt.to(depth.device)

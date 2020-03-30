@@ -12,6 +12,11 @@ import general_settings
 from utils.logging import log, error, log_singleton
 
 class ImageWrapper:
+    """
+    Wrapper around an image file and linked information.
+    Wraps all relevant metadata, as it is stored on the file system.
+    """
+
     @staticmethod
     def load_metadata(filename):
         with open(filename.replace("RGB_undistorted", "RAW"), "rt") as fh:
@@ -55,6 +60,10 @@ class ImageWrapper:
         # self._saturation_mask = None
 
     def get_intrinsics(self):
+        """
+        Get the intrinsics for this observation.
+        This incorporates any cropping and rescaling.
+        """
         if self._K is None:
             K = self.original_intrinsics.clone()
             if self.crop is not None:
@@ -64,6 +73,10 @@ class ImageWrapper:
         return self._K
 
     def get_image(self):
+        """
+        Get the image for this observation.
+        This incorporates any cropping and rescaling.
+        """
         if self._image is None:
             image_data = np.load(self.image_file)
             if not isinstance(image_data, np.ndarray):
@@ -127,8 +140,16 @@ class ImageWrapper:
         return image#, saturation_mask
 
 class ImageAdapter(ABC):
+    """
+    Adapter for the file system, responsible from loading images and relevant metadata,
+    and formatting them into ImageWrappers.
+    """
+
     @staticmethod
     def load_depth_and_bbox(depth_dir, view, depth_scale, device):
+        """
+        Internal helper function trying to load depth from file, as well as bounding box information.
+        """
         base_filename = os.path.join(depth_dir, "%05d" % view)
         if os.path.exists(base_filename + ".npz"):
             npz_dict = np.load(base_filename + ".npz")
@@ -157,6 +178,9 @@ class ImageAdapter(ABC):
 
     @staticmethod
     def load_bbox(depth_dir, view):
+        """
+        Internal helper function trying to load bounding box information from file.
+        """
         base_filename = os.path.join(depth_dir, "%05d" % view)
         if os.path.exists(base_filename + ".npz"):
             npz_dict = np.load(base_filename + ".npz")
@@ -176,6 +200,9 @@ class ImageAdapter(ABC):
 
     @staticmethod
     def load_pose(color_dir, view, depth_scale, device):
+        """
+        Internal helper function to load camera pose information from file.
+        """
         pose_file = os.path.join(color_dir, '%05d.pose' % view)
         if os.path.exists(pose_file):
             with open(pose_file, "rb") as fh:
@@ -194,6 +221,12 @@ class ImageAdapter(ABC):
         return pose
 
     def get_center_index(self):
+        """
+        Get the index (in the images array) of the reference view, if it is present as an observation.
+
+        Outputs:
+            center_index        python int with the index, or None if it is not present
+        """
         center_indices = [i for i, image in enumerate(self.images) if image.is_ctr_view]
         if len(center_indices) == 0:
             log_singleton("no_center_view", "The center view is not in the observations")
@@ -204,6 +237,15 @@ class ImageAdapter(ABC):
             return center_indices[0]
 
     def _get_info_set(self, criterion=lambda x: True):
+        """
+        Format the image indices and related lighting information as prescribed by general_settings.batch_size.
+
+        Outputs:
+            indices, light_infos            python lists containing, in parallel:
+                batch_indices               (long) torch.tensor containing indices into the observation list
+                batch_light_infos           (long) torch.tensor containing information required for the lighting model  
+                                                Typically indices into the light list
+        """
         device = torch.device(general_settings.device_name)
         training_indices = []
         training_light_infos = []
@@ -239,6 +281,9 @@ class ImageAdapter(ABC):
         pass
 
 def _constant_generator(constant):
+    """
+    Internal helper generator 
+    """
     while True:
         yield constant
 

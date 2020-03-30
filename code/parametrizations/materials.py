@@ -7,6 +7,12 @@ from utils.logging import error
 from functools import lru_cache
 
 class MaterialParametrization(Parametrization):
+    """
+    Parametrization representing the material properties of the scene points.
+    These material properties are to be converted to reflectance coefficients
+    with the help of the relevant BrdfParametrization.
+    """
+
     def __init__(self, brdf_parametrization=None):
         super().__init__()
         if brdf_parametrization is None:
@@ -17,20 +23,21 @@ class MaterialParametrization(Parametrization):
     def initialize(nr_points, diffuse_materials, device):
         """
         Create a MaterialParametrization object for the given number of points
-        and using the given BrdfParametrization. May have additional optional
-        arguments for specific subclasses.
+        and using the given BrdfParametrization on a given device. May have
+        additional optional arguments for specific subclasses.
         """
         pass
 
     @abstractmethod
     def get_brdf_parameters(self):
         """
-        Get the actual represented materials for every point
+        Get the actual represented materials for every point.
 
         Outputs:
             parameter_dict  a dictionary containing:
                 diffuse     NxB_d torch.tensor with the diffuse material parameters
                 specular    a dictionary for torch.tensors with specular parameters
+                    name        NxB_s torch.tensor with the relevant specular values
         """
         pass
 
@@ -83,6 +90,12 @@ def attach_dict_recursive(dictionary):
 
 
 class BaseSpecularMaterials(MaterialParametrization):
+    """
+    A MaterialParametrization subclass that has distinct diffuse albedos for all
+    scene points, but parametrizes specular behavior as a mix of multiple base
+    behaviors.
+    """
+    
     def initialize(self, nr_points, diffuse_materials, device, nr_bases=2):
         B_d, B_s_dict = self.brdf_parametrization.get_parameter_count()
         self.brdf_parameters = {

@@ -12,14 +12,19 @@ from utils.TOME import depth_reprojection_bound
 # Point light parametrization should include: position, intensity, attenuationfrom abc import ABC, abstractmethod
 
 class LightParametrization(Parametrization):
+    """
+    Parametrization representing a light source. It should support the calculate of light intensities incident on a given
+    scene point, including the shadow modeling that may or may not require.
+    """
+
     @abstractmethod
     def initialize(self):
         pass
 
     @abstractmethod
-    def get_light_intensities(self, location_parametrization, rig_extrinsics):
+    def get_light_intensities(self, location_parametrization, rig_extrinsics, calculate_shadowing=True):
         """
-        Get the intensities this light model sends towards a given surface point.
+        Get the intensities this light model sends towards a given surface point, optionally taking into account shadowing.
 
         Inputs:
             location_parametrization    LocationParametrization instance
@@ -27,9 +32,11 @@ class LightParametrization(Parametrization):
             calculate_shadows           Whether or not to calculate and return the shadow masks (default True)
 
         Outputs:
-            ray_intensities             NxLx3 torch.tensor with the intensities arriving at the surface points
-            ray_directions              NxLx3 torch.tensor with the directions each of these intensities is arriving from
-                                        This is a unit vector pointing away from the surface point
+            ray_intensities             CxNx3 torch.tensor with the intensities arriving at the surface points.
+            ray_directions              CxNx3 torch.tensor with the directions each of these intensities is arriving from
+                                            This is a unit vector pointing away from the surface point.
+            calculated_shadowing        CxN torch.tensor indicating for each surface point whether it is obscured
+                                            from this light source.
         """
         pass
 

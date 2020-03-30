@@ -6,10 +6,18 @@ from utils.vectors import inner_product, normalize
 from parametrizations.parametrization import Parametrization
 
 class BrdfParametrization(Parametrization):
+    """
+    A Parametrization subclass representing a material parametrization model.
+    It should support the calculation of reflectance coefficients, based on
+    all relevant geometry information. It supports the use of underlying parameters,
+    in case the BRDF model is something that should be changing.
+    Material parameters are always split up in a 'diffuse' and 'specular' component.
+    """
+
     @staticmethod
     def _calculate_NdotHs(Ls, Vs, normals):
         """
-        Internal function for calculation half-vectors and their inner products
+        Internal function for calculation of half-vectors and their inner products
         with the surface normals.
 
         Inputs:
@@ -71,6 +79,7 @@ class BrdfParametrization(Parametrization):
         """
         Perform Euclidean projection of the parameters onto their feasible domain.
         This is performed in-place on the underlying data of the dictionary elements.
+        Note: this is distinct from this Parametrization's own enforce_parameter_bounds.
 
         Inputs:
             parameter_dict  a dictionary containing:
@@ -197,8 +206,7 @@ def SmithG1(NdotWs, p_roughness):
     Outputs:
         Gs              NxLx1 torch.tensor containing the shadowing values
     """
-    # if any of the cosines are negative, then this clamping will eventually
-    # result in zero shadow-masking coefficient terms
+    # if any of the cosines are negative, then this clamping will result in zeroes
     cos_thetas = NdotWs.clamp_(min=0.0, max=1.0)
     cos_thetas2 = cos_thetas**2
     # sin_thetas == 0 gets handled below. Trips up the sqrt() backprop otherwise
@@ -218,6 +226,11 @@ def SmithG1(NdotWs, p_roughness):
 
 
 class CookTorrance(BrdfParametrization):
+    """
+    The Cook Torrance BRDF model. It describes a material with 3 diffuse coeffients for albedo,
+    3 specular coefficients for albedo, as well as a roughness and a dielectric coefficient.
+    """
+
     def calculate_rhos(self, Ls, Vs, normals, parameters):
         Hs, NdotHs = BrdfParametrization._calculate_NdotHs(Ls, Vs, normals)
         NdotLs = inner_product(normals, Ls)
@@ -270,6 +283,10 @@ class CookTorrance(BrdfParametrization):
 
 
 class CookTorranceF1(CookTorrance):
+    """
+    A simplified version of the Cook Torrance model where the Fresnel term is disregarded.
+    """
+
     def get_parameter_count(self):
         return 3, {'albedo': 3, 'roughness': 1}
 

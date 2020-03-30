@@ -5,12 +5,27 @@ from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 def color_normals(normals):
+    """
+    Transform a set of normals to a colorized representation that can be visualized.
+
+    Inputs:
+        normals         torch.tensor or np.ndarray
+
+    Outputs:
+        colorized       A colorized version of these normals for visualization, in [0,256[
+    """
     return 128-128*normals
 
 def curvature(normals_image):
     """
     Given HxWx3 vector map, return an angle map containing the angles
-    to the below and the right neighbours
+    to the below and the right neighbours.
+
+    Inputs:
+        normals_image       HxWx3 torch.tensor containing the normal vectors
+    
+    Outputs:
+        curvatures          HxWx1 torch.tensor containing indicators for the local curvature
     """
     ud_angles = (normals_image[:-1,:-1, None, :] @ normals_image[1:, :-1, :, None]).clamp(min=-1.0,max=1.0)[:,:,0].acos()
     lr_angles = (normals_image[:-1,:-1, None, :] @ normals_image[:-1, 1:, :, None]).clamp(min=-1.0,max=1.0)[:,:,0].acos()
@@ -41,6 +56,17 @@ _color_map_bincenters = torch.tensor(np.array([
 ])).float()
 
 def color_depths(depth, offset=None, scale=None):
+    """
+    Color a depth image.
+
+    Inputs:
+        depth       Nx1 torch.tensor containing depth values
+        [offset]    Offset to subtract from the depth values before visualization. Defaults to depth.min()
+        [scale]     Scale to divide the depth values by before visualization. Defaults to (depth.max() - offset)
+    
+    Outputs:
+        colorized   Nx3 torch.tensor with the colorized version of the depth values
+    """
     if offset is None:
         offset = depths.min()
     if scale is None:
@@ -56,6 +82,16 @@ def color_depths(depth, offset=None, scale=None):
     return colors
 
 def color_depth_offsets(offsets):
+    """
+    Color a depth difference image. Blue means a positive difference, red negative.
+    The bigger the difference, the more intense the color is.
+
+    Inputs:
+        offsets     Nx1 torch.tensor with depth differences
+    
+    Outputs:
+        colorized   Nx3 torch.tensor with the colorized version of the depth differences.
+    """
     offset_colors = torch.tensor([[0,0,255],[255,0,0]]).to(offsets.device)
     error_colors = offset_colors[(offsets > 0).long()]
     return error_colors * offsets.abs().view(-1,1)
@@ -76,6 +112,17 @@ _color_map_errors = torch.tensor(np.array([
 ])).float()
 
 def color_errors(errors, scale=1):
+    """
+    Color an error image.
+
+    Inputs:
+        errors          torch.tensor containing error values, of arbitrary shape
+        [scale]         Scale to divide the error values by before visualization. Defaults to 1.
+    
+    Outputs:
+        colorized       torch.tensor with the colorized version of the error values.
+                        Has an extra dimension of size 3 appended.
+    """
     errors_color_indices = ((errors / scale + 1e-5).log2() + 5).clamp_(min=0, max=9)
     i0 = errors_color_indices.long()
     f1 = errors_color_indices - i0.float()
@@ -94,17 +141,34 @@ _base_colors = torch.Tensor(np.array([
 ])).float()
 
 def color_base_weights(base_weights):
+    """
+    Color a set of base weights according to a pre-defined color scheme.
+
+    Inputs:
+        base_weights        NxB torch.tensor containing the weights, where B<=3.
+    
+    Outputs:
+        colors              Nx3 torch.tensor containing the colorized version.
+    """
     base_colors = _base_colors[:base_weights.shape[1]].to(base_weights.device)
     return base_weights @ base_colors
 
 def draw_scene_preview(object_points, center_invRt, observation_cameras, elevation=0, azimuth=0):
     """
-    The caller is responsible for closing the figure.
+    Draws the scene (object points, reference view position and all observation cameras) in a matplotlib.pyplot.Figure.
+    The caller is responsible for showing, saving, and/or closing the figure.
+
+    Inputs:
+        object_points           Nx3 torch.tensor containing the scene point locations
+        center_invRt            3x4 torch.tensor containing the (inverse) extrinsics of the reference view
+        observation_cameras     Cx3x4 torch.tensor containing the extrinsics of the observation views
+        [elevation]             The 3d elevation of the matplotlib visualization.
+        [azimuth]               The 3d azimuth of the matplotlib visualization.
     """
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
 
-    camera_frustum_0, camera_frustum_1 = get_camera_frustum()
+    camera_frustum_0, camera_frustum_1 = _get_camera_frustum()
 
     observation_Rts = observation_cameras.detach().cpu().numpy()
     observation_invRs = observation_Rts[:,:3,:3].transpose(0,2,1)
@@ -172,7 +236,10 @@ def draw_scene_preview(object_points, center_invRt, observation_cameras, elevati
 
     return fig
 
-def get_camera_frustum(scale=0.05):
+def _get_camera_frustum(scale=0.05):
+    """
+    Internal helper function, generating a series of coordinates that visualize a camera's frustum in 3D.
+    """
     # camera coordinate axes
     line_starts = [np.zeros((3,3))]
     line_ends = [np.eye(3) / 2]
@@ -196,10 +263,12 @@ def get_camera_frustum(scale=0.05):
 
 
 def set_axes_equal(ax):
-    '''
+    """
     Implement Matplotlib's ax.set_aspect('equal') and ax.axis('equal') for 3D.
-      ax: a matplotlib axis
-    '''
+
+    Inputs:
+        ax      matplotlib.pyplot.Axis
+    """
     def set_axes_radius(ax, origin, radius):
         ax.set_xlim3d([origin[0] - radius, origin[0] + radius])
         ax.set_ylim3d([origin[1] - radius, origin[1] + radius])

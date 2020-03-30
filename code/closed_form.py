@@ -6,6 +6,22 @@ from utils.sentinels import OBSERVATION_OUT_OF_BOUNDS
 import general_settings
 
 def closed_form_lambertian_solution(experiment_state, data_adapter, sample_radius=7, shadows_occlusions=True, verbose=True):
+    """
+    Calculate the closed form solution of the materials and normals, given a lambertian assumption.
+
+    Inputs:
+        experiment_state
+        data_adapter
+        [sample_radius]             Observations can optionally be box-blurred before extraction. Defaults to 7.
+        [shadows_occlusions]        Whether to simulate obstructions in the rendering. Defaults to True.
+        [verbose]                   Whether to be verbose about the progress. Defaults to True.
+
+    Outputs:
+        normals                     Nx3 torch.tensor containing the normal estimates
+        albedos                     Nx3 torch.tensor containing the diffuse albedo estimates
+        inliers                     NxC containing, for each point and each observation, whether it is an inlier in the RANSAC.
+        residuals                   NxCx3 containing, for each point and each observation, the residual modelling error.
+    """
     device = torch.device(general_settings.device_name)
     # calculates the closed-form solution given the current state and the measurements
     with torch.no_grad():

@@ -24,5 +24,11 @@ def log_singleton(warning_name, *args, **kwargs):
         warnings_issued[warning_name] = True
 
 def error(text):
+    """
+    Helper function for raising an error, but only after logging it correctly.
+
+    Inputs:
+        text                The error message to print
+    """
     log(text)
     raise UserWarning(text)
