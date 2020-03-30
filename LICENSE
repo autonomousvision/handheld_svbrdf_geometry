@@ -1,4 +1,9 @@
-"""
+The following license applies to all files in this repository, without exception.
+There are two third party contributions contained within this repository: pyrender and PermutohedralLatticeGPU.hereby
+Both carry this same license, differing only in copyright holders.
+
+MIT License
+
 Copyright (c) 2020 Simon Donné, Max Planck Institute for Intelligent Systems, Tuebingen, Germany
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -18,24 +23,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-"""
-
-import torch
-# these try except clauses are to handle cases where the hardware doesn't 
-# support the functions, but you don't want to use them anyway
-try:
-    from ._implementation import depth_reprojection
-except ImportError as e:
-    def depth_reprojection(*args, **kwargs):
-        raise e
-try:
-    from ._implementation import depth_reprojection_bound
-except ImportError as e:
-    def depth_reprojection_bound(*args, **kwargs):
-        raise e
-
-try:
-    from ._implementation import permutohedral_filter
-except ImportError as e:
-    def permutohedral_filter(input, positions, reverse):
-        raise e
