@@ -103,7 +103,6 @@ def image_based_alignment(mesh_points, mesh_normals, Rt_img, K_img, depth, norma
     )
     loss_evolution = []
     loop = range(iterations)
-    torch.autograd.set_detect_anomaly(True)
     if verbose:
         loop = tqdm(loop, desc="Optimizing pose for the reprojection")
     for it in loop:

@@ -110,6 +110,7 @@ experiment_settings = ExperimentSettings({
         "iterations": 1000,
         'visualize_initial': False,
         'visualize_results': True,
+        'target_set': "training",
     },
     'optimization_steps': [
         {
@@ -122,6 +123,13 @@ experiment_settings = ExperimentSettings({
                 'locations',
             ],
             'visualize_initial': True,
+        },
+        {
+            'parameters': [
+                'observation_poses',
+            ],
+            'visualize_initial': True,
+            'target_set': "testing",
         },
     ],
 })
@@ -251,4 +259,4 @@ for step_index in range(len(experiment_settings.get('optimization_steps'))):
             data_adapter,
             optimization_settings['losses']
         )
-    evaluate_state("Proposed", experiment_settings.get('data_settings')['object_name'], experiment_state)
+evaluate_state("Proposed", experiment_settings.get('data_settings')['object_name'], experiment_state)

@@ -80,7 +80,15 @@ def optimize(experiment_state, data_adapter, optimization_settings, output_path_
     loss_evolutions.update(dict([(losses[loss_idx][0], []) for loss_idx in range(len(losses))]))
     parameter_evolutions = defaultdict(lambda: [])
 
-    training_indices_batches, training_light_infos_batches = data_adapter.get_training_info()
+    if optimization_settings['target_set'] == "training":
+        training_indices_batches, training_light_infos_batches = data_adapter.get_training_info()
+    elif optimization_settings['target_set'] == "testing":
+        training_indices_batches, training_light_infos_batches = data_adapter.get_testing_info()
+        if any([x != "observation_poses" for x in optimization_settings['parameters']]):
+            log("Warning: optimizing non-pose parameters over the testing set.")
+    else:
+        error("optimization_settings['target_set'] should be one of ('training', 'testing')")
+
     total_training_views = sum([len(training_indices) for training_indices in training_indices_batches])
     ctr_index = data_adapter.get_center_index()
 

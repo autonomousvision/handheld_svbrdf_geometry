@@ -51,7 +51,7 @@ def localize_settings(settings, local_paths):
 
 def recursive_update(dictionary, updates):
     """
-    Internal helper function to recursively update nested dictionaries in-place.
+    Internal helper function to recursively update nested dictionaries (copies the source).
     """
     dictionary = dict(dictionary)
     for key, value in updates.items():
@@ -143,7 +143,7 @@ class ExperimentSettings:
             ])
             return shorthand
 
-    def check_stored(self, name, index=None, non_critical=[]):
+    def check_stored(self, name, index=None, non_critical=["visualize_initial", "visualize_results"]):
         """
         Checks if a stored settings file is available, reflecting that that step has been previously run.
         Returns False if no such settings are available, or True if they are available and match the provided settings.
