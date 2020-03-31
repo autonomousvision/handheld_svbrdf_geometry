@@ -49,14 +49,14 @@ def localize_settings(settings, local_paths):
     return local_settings
 
 
-def recursive_update(dictionary, updates):
+def recursive_dict_update(dictionary, updates):
     """
     Internal helper function to recursively update nested dictionaries (copies the source).
     """
     dictionary = dict(dictionary)
     for key, value in updates.items():
         if isinstance(value, collections.abc.Mapping):
-            dictionary[key] = recursive_update(dictionary.get(key, {}), value)
+            dictionary[key] = recursive_dict_update(dictionary.get(key, {}), value)
         else:
             dictionary[key] = value
     return dictionary
@@ -92,14 +92,18 @@ class ExperimentSettings:
         )
 
     def get_output_path(self):
-        return os.path.join(
+        output_path = os.path.join(
             self.get('local_data_settings')['base_output_path'],
             "%s_%05d" % (
                 self.get('data_settings')['object_name'],
                 self.get('data_settings')['center_view'],
-            )
+            ),
         )
-        
+        suffix = self.get('data_settings').get('output_path_suffix', None)
+        if suffix is not None:
+            output_path = os.path.join(output_path, suffix)
+        return output_path
+
 
     def get(self, name, index=None):
         """
@@ -111,7 +115,7 @@ class ExperimentSettings:
         if index is not None and subsettings is not None:
             subsettings = subsettings[index]
             if name == "optimization_steps":
-                subsettings = recursive_update(self.settings["default_optimization_settings"], subsettings)
+                subsettings = recursive_dict_update(self.settings["default_optimization_settings"], subsettings)
         return subsettings
 
     def get_shorthand(self, name, index=None):
