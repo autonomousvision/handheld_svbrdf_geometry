@@ -27,9 +27,12 @@ import copy
 import cv2
 import trimesh
 import thirdparty.pyrender.pyrender as pyrender
+from tqdm import tqdm
+import torch
 
+from parametrizations.poses import PoseParametrizationFactory
 from utils.logging import error, log
-from utils.conversion import to_numpy, to_o3d
+from utils.conversion import to_numpy, to_o3d, to_torch
 
 gt_scan_folder = "/is/rg/avg/projects/mobile_lightstage/simon_scans"
 
@@ -67,6 +70,91 @@ class CustomShaderCache():
                 defines=defines
             )
         return self.program
+
+def image_based_alignment(mesh_points, mesh_normals, Rt_img, K_img, depth, normals, verbose=True):
+    """
+    Refining a mesh's position and rotation based on depth and normal maps
+    """
+    # optimize Rt so that we get a good reprojection comparison
+    # anything that doesn't project within 2 cm is wrong
+    # average the mean of the lowest 50% distances after that
+    torch_pts = to_torch(mesh_points)
+    torch_mesh_normals = to_torch(mesh_normals)
+    torch_K = to_torch(K_img).double()
+    torch_Rt = to_torch(Rt_img).double()
+    torch_pose_change = PoseParametrizationFactory("quaternion")()
+    torch_pose_change.initialize(to_torch(np.eye(3)), to_torch(np.zeros((3,1))))
+    torch_depth = to_torch(depth).double()
+    torch_normals = to_torch(normals).double()
+
+    # now we optimize a pose for the mesh
+    dilated_depth = cv2.dilate(depth, np.ones((7,7)))
+    eroded_depth = cv2.erode(depth, np.ones((7,7)))
+    edges = (dilated_depth - eroded_depth) > 0.02
+    edges = to_torch(edges.astype(int)).double()
+    
+    iterations = 100
+    parameter_info = torch_pose_change.parameter_info()['observation_poses']
+    optimizer = torch.optim.Adam(parameter_info[0], lr=parameter_info[1], betas=(0.9,0.9), eps=1e-4)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(
+        optimizer,
+        milestones=[iterations/2, iterations/4*3],
+        gamma=0.1
+    )
+    loss_evolution = []
+    loop = range(iterations)
+    torch.autograd.set_detect_anomaly(True)
+    if verbose:
+        loop = tqdm(loop, desc="Optimizing pose for the reprojection")
+    for it in loop:
+        optimizer.zero_grad()
+        Rts = torch_pose_change.Rts()[0]
+
+        transformed_points = torch_pts @ Rts[:3,:3].T + Rts[:3,3:].T
+        transformed_normals = torch_mesh_normals @ Rts[:3,:3].T
+        
+        projected_points = (transformed_points @ torch_Rt[:3,:3].T + torch_Rt[:3,3:].T) @ torch_K.T
+        #find the pixels
+        projected_pixels = (projected_points[:,:2] / projected_points[:,2:])
+        projected_coords = projected_pixels.clone()
+        # transform to gridsample units: -1 to 1
+        projected_coords += 0.5
+        projected_coords[:,0] /= depth.shape[1] / 2
+        projected_coords[:,1] /= depth.shape[0] / 2
+        projected_coords -= 1
+
+        # sample depth
+        sampled_depth = torch.nn.functional.grid_sample(
+            torch_depth[None,None],
+            projected_coords[None,None],
+            align_corners=False
+        )[0,0,0]
+        sampled_edges = torch.nn.functional.grid_sample(
+            edges[None,None],
+            projected_coords[None,None],
+            align_corners=False
+        )[0,0,0]
+        sampled_normals = torch.nn.functional.grid_sample(
+            torch_normals.permute(2,0,1)[None],
+            projected_coords[None,None],
+            align_corners=False
+        ).permute(0,2,3,1)[0,0]
+        # depth differences
+        depth_diffs = (sampled_depth - projected_points[:,2]).abs()
+        normal_diffs = (transformed_normals * sampled_normals).sum(dim=1).clamp_(min=-1.,max=1.).acos()
+        # anything too large is just set to <don't care>
+        valid_depths = (depth_diffs <= 0.01) * (sampled_edges == 0) * (normal_diffs < np.pi/2)
+
+        loss = (10000*depth_diffs[valid_depths] + normal_diffs[valid_depths]).mean()
+        loss.backward()
+        torch_pose_change.clear_cache()
+        loss_evolution.append(loss.detach().item())
+        optimizer.step()
+        scheduler.step()
+        if verbose:
+            loop.set_description("Performing alignment refinement: loss %12.6f" % loss.item())
+
+    return to_numpy(torch_pose_change.Rts()[0])
 
 def render_depth_normals(vertices, faces, normals, K, camera_pose, image_shape):
     """
@@ -139,12 +227,23 @@ def evaluate_state(evaluation_name, object_name, experiment_state):
     gt_mesh_aligned.transform(registration_transform)
     # o3d.visualization.draw_geometries([gt_mesh_aligned, estimated_cloud])
 
-    # now the idea is actually to project the gt_scan onto our image plane and calculate depth and normal errors there.
+    # now project the gt_scan onto our image plane and calculate depth and normal errors there
     estimated_depth = to_numpy(experiment_state.locations.implied_depth_image())
     estimated_normals = to_numpy(experiment_state.locations.create_image(experiment_state.normals.normals()))
     
     K_proj  = to_numpy(experiment_state.locations.invK.inverse())
     Rt = to_numpy(experiment_state.locations.invRt.inverse())
+
+    image_based_transform = image_based_alignment(
+        np.array(gt_mesh_aligned.vertices),
+        np.array(gt_mesh_aligned.vertex_normals),
+        Rt,
+        K_proj,
+        estimated_depth,
+        estimated_normals,
+        verbose=False
+    )
+    gt_mesh_aligned.transform(np.concatenate((image_based_transform, np.array([0,0,0,1]).reshape(1,4)), axis=0))
 
     gt_normals_aligned, gt_depth_aligned = render_depth_normals(
         np.array(gt_mesh_aligned.vertices),
