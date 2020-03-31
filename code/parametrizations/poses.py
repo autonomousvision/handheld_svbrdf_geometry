@@ -83,7 +83,7 @@ class QuaternionPoseParametrization(PoseParametrization):
         }
 
     def serialize(self):
-        return [self.qs.detach(), self.ts.detach()]
+        return [self.qs.detach().clone(), self.ts.detach().clone()]
 
     def deserialize(self, *args):
         self.qs = torch.nn.Parameter(args[0])

@@ -70,7 +70,6 @@ class Parametrization(ABC):
         """
         pass
 
-    @abstractmethod
     def enforce_parameter_bounds(self):
         """
         Enforce the bounds on the parameters of this Parametrization objects.

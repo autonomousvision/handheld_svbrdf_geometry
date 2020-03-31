@@ -42,10 +42,11 @@ from evaluation import evaluate_state
 experiment_settings = ExperimentSettings({
     'data_settings': {
         'data_type': "XIMEA",
-        'center_view': 180,
+        'center_view': 1171, #bunny: 180, peter: 1171 or 566
         'nr_neighbours': 40, 
-        'input_path': "<input_data_base_folder>/bunny/",
-        'output_path': "<output_base_folder>/development_test/",
+        'base_input_path': "<input_data_base_folder>/",
+        'object_name': "peter",
+        'base_output_path': "<output_base_folder>/development_test/",
         'calibration_path_geometric': "<calibration_base_folder>/geometry/calib-20191002/",
         'vignetting_file': '<calibration_base_folder>/photometric/20190822_vignettes_light_intensities_attenuation/vignetting.npz',
         'depth_folder': 'tsdf-fusion-depth_oldCV_40_views',
@@ -101,10 +102,10 @@ experiment_settings = ExperimentSettings({
         'losses': {
             "photoconsistency L1": 1e-4,
             "geometric consistency": 1e1,
-            "depth compatibility": 1e2,
-            "normal smoothness": 1e0,
+            "depth compatibility": 1e10,
+            "normal smoothness": 1e-1,
             "material sparsity": 1e-1,
-            "material smoothness": 1e0
+            "material smoothness": 1e0,
         },
         "iterations": 1000,
         'visualize_initial': False,
@@ -180,32 +181,33 @@ else:
     experiment_state.save(initialization_state_folder)
     experiment_settings.save("initialization_settings")
 
+evaluate_state("initialization", experiment_settings.get('data_settings')['object_name'], experiment_state)
 experiment_state.visualize_statics(
-    experiment_settings.get('local_data_settings')['output_path'],
+    experiment_settings.get_output_path(),
     data_adapter
 )
 
 higo_state_folder = experiment_settings.get_state_folder("higo")
 if not experiment_settings.check_stored("higo_baseline"):
-    experiment_state = higo_baseline(
+    higo_experiment_state = higo_baseline(
         experiment_state,
         data_adapter,
         higo_state_folder,
         experiment_settings.get('higo_baseline')
     )
-    experiment_state.visualize(
-        experiment_settings.get('local_data_settings')['output_path'],
+    higo_experiment_state.visualize(
+        experiment_settings.get_output_path(),
         "higo_baseline",
         data_adapter,
         losses = [],
         shadows_occlusions=False
     )
-    experiment_state.save(higo_state_folder)
+    higo_experiment_state.save(higo_state_folder)
     experiment_settings.save("higo_baseline")
 else:
-    experiment_state.load(higo_state_folder)
-evaluate_state("higo baseline", "bunny", experiment_state)
-experiment_state.load(initialization_state_folder)
+    higo_experiment_state = ExperimentState.copy(experiment_state)
+    higo_experiment_state.load(higo_state_folder)
+evaluate_state("higo baseline", experiment_settings.get('data_settings')['object_name'], higo_experiment_state)
 
 optimization_step_settings = experiment_settings.get('default_optimization_settings')
 experiment_settings.check_stored("default_optimization_settings")
@@ -218,34 +220,35 @@ for step_index in range(len(experiment_settings.get('optimization_steps'))):
 
     shorthand = experiment_settings.get_shorthand("optimization_steps", step_index)
     set_name = "%02d_%s" % (step_index, shorthand)
+
+    if optimization_settings['visualize_initial']:
+        experiment_state.visualize(
+            experiment_settings.get_output_path(),
+            "%02d__initial" % step_index,
+            data_adapter,
+            optimization_settings['losses']
+        )
+
     if experiment_settings.check_stored("optimization_steps", step_index):
         experiment_state.load(step_state_folder)
     else:
-        if optimization_settings['visualize_initial']:
-            experiment_state.visualize(
-                experiment_settings.get('local_data_settings')['output_path'],
-                "%02d__initial" % step_index,
-                data_adapter,
-                optimization_settings['losses']
-            )
-
         optimize(
             experiment_state,
             data_adapter,
             optimization_settings,
             output_path_structure=os.path.join(
-                experiment_settings.get('local_data_settings')['output_path'],
+                experiment_settings.get_output_path(),
                 "evolution_%%s_%s.png" % set_name
             )
         )
-
-        if optimization_settings['visualize_results']:
-            experiment_state.visualize(
-                experiment_settings.get('local_data_settings')['output_path'],
-                set_name,
-                data_adapter,
-                optimization_settings['losses']
-            )
         experiment_state.save(step_state_folder)
         experiment_settings.save("optimization_steps", step_index)
-    evaluate_state("Proposed", "bunny", experiment_state)
+
+    if optimization_settings['visualize_results']:
+        experiment_state.visualize(
+            experiment_settings.get_output_path(),
+            set_name,
+            data_adapter,
+            optimization_settings['losses']
+        )
+    evaluate_state("Proposed", experiment_settings.get('data_settings')['object_name'], experiment_state)

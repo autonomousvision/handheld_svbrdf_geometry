@@ -78,7 +78,7 @@ class DepthCompatibilityLoss(LossFunction):
         depth_threshold = 0.001
         estimated_depth = experiment_state.locations.implied_depth_vector().squeeze()
         initial_depth = experiment_state.locations.create_vector(data_adapter.center_depth)
-        losses = ((initial_depth - estimated_depth).abs() - 0.001).div_(depth_threshold).clamp_(min=0).pow(2)
+        losses = ((initial_depth - estimated_depth).abs() - depth_threshold).clamp_(min=0).pow(2)
         return losses
 
 

@@ -110,7 +110,6 @@ class BrdfParametrization(Parametrization):
         """
         pass
 
-
 class Diffuse(BrdfParametrization):
     def calculate_rhos(self, Ls, Vs, normals, parameters):
         Hs, NdotHs = BrdfParametrization._calculate_NdotHs(Ls, Vs, normals)

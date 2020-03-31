@@ -46,7 +46,8 @@ def refine_registration(target, source, distance_threshold, Tinit=np.eye(4)):
         transformation          4x4 np.ndarray that transforms points in the source to the target domain
     """
     result = o3d.registration.registration_icp(
-        target, source, distance_threshold, Tinit, o3d.registration.TransformationEstimationPointToPlane(),
+        target, source, distance_threshold, Tinit,
+        o3d.registration.TransformationEstimationPointToPlane(),
         criteria=o3d.registration.ICPConvergenceCriteria(max_iteration=1000)
     )
     return result.transformation
@@ -135,7 +136,7 @@ def evaluate_state(evaluation_name, object_name, experiment_state):
     )
 
     gt_mesh_aligned = copy.deepcopy(gt_scan_mesh)
-    gt_mesh_aligned.transform(np.linalg.inv(registration_transform))
+    gt_mesh_aligned.transform(registration_transform)
     # o3d.visualization.draw_geometries([gt_mesh_aligned, estimated_cloud])
 
     # now the idea is actually to project the gt_scan onto our image plane and calculate depth and normal errors there.
@@ -168,4 +169,4 @@ def evaluate_state(evaluation_name, object_name, experiment_state):
     average_accuracy = (depth_diff * edgevalid_pixels).sum() / edgevalid_pixels.sum()
     average_angle_error = (edgevalid_pixels*normal_anglediff).sum() / edgevalid_pixels.sum()
 
-    log("Evaluating %s - %s: depth accuracy %10.4fm         normal accuracy %10.4f degrees" % (evaluation_name, object_name, average_accuracy, average_angle_error))
+    log("Evaluating %s - %s: depth accuracy %6.4fmm        normal accuracy %10.4f degrees" % (evaluation_name, object_name, average_accuracy * 1000, average_angle_error))

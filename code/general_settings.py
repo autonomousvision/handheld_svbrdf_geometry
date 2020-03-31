@@ -26,22 +26,22 @@ but only the run-time behaviour, such as batch size, or point cloud saving.
 """
 
 # size of the fattening for the calculated observation occlusion
-occlusion_fattening = 4
+occlusion_fattening = 8
 
 # size of the fattening for the simulated shadowing
-shadow_fattening = 4
+shadow_fattening = 8
 
 # device to store the tensors on. This is also the computation device.
 device_name = 'cuda:0'
 
-# intensity scale for visualizations. Loss terms are scaled with this, too.
+# intensity scale for visualizations.
 intensity_scale = 5e-4
 
 # whether or not to save point clouds in the experiment_state visualize() function
 save_clouds = True
 
 # how often to plot optimization progress (in iterations)
-evolution_plot_frequency = 200
+evolution_plot_frequency = 50
 
 # the maximum batch size for simulation/extraction/loss evaluation
 batch_size = 20

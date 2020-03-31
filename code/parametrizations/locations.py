@@ -254,7 +254,7 @@ class DepthMapParametrization(LocationParametrization):
         }
 
     def serialize(self):
-        return self.depth.detach(), self.invK, self.invRt, self.mask
+        return self.depth.detach().clone(), self.invK, self.invRt, self.mask
 
     def deserialize(self, *args):
         depth, invK, invRt, mask = args

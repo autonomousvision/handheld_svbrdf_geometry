@@ -11,7 +11,7 @@ furnished to do so, subject to the following conditions:
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WcARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
@@ -74,8 +74,8 @@ class ExperimentSettings:
         Save the given subsettings to file, depending on local_data_settings -> output_path
         """
         full_name = name + ("" if index is None else "_%d" % index)
-        os.makedirs(self.get('local_data_settings')['output_path'], exist_ok=True)
-        settings_file = os.path.join(self.get('local_data_settings')['output_path'], "%s.json" % full_name)
+        os.makedirs(self.get_output_path(), exist_ok=True)
+        settings_file = os.path.join(self.get_output_path(), "%s.json" % full_name)
         subsettings = self.get(name, index)
         with open(settings_file, "wt") as fh:
             return json.dump(subsettings, fh, indent=4)
@@ -86,10 +86,20 @@ class ExperimentSettings:
         """
         full_name = name + ("" if index is None else "_%d" % index)
         return os.path.join(
-            self.settings['local_data_settings']['output_path'],
+            self.get_output_path(),
             "stored_states",
             full_name
         )
+
+    def get_output_path(self):
+        return os.path.join(
+            self.get('local_data_settings')['base_output_path'],
+            "%s_%05d" % (
+                self.get('data_settings')['object_name'],
+                self.get('data_settings')['center_view'],
+            )
+        )
+        
 
     def get(self, name, index=None):
         """
@@ -97,8 +107,8 @@ class ExperimentSettings:
         In the case of optimization_step settings, the default_optimization_settings are cloned, updated with the
         specified step index' settings, and returned.
         """
-        subsettings = self.settings[name]
-        if index is not None:
+        subsettings = self.settings.get(name, None)
+        if index is not None and subsettings is not None:
             subsettings = subsettings[index]
             if name == "optimization_steps":
                 subsettings = recursive_update(self.settings["default_optimization_settings"], subsettings)
@@ -141,7 +151,7 @@ class ExperimentSettings:
         One can pass non-critical settings that don't necessarily need to match.
         """
         full_name = name + ("" if index is None else "_%d" % index)
-        settings_file = os.path.join(self.settings['local_data_settings']['output_path'], "%s.json" % full_name)
+        settings_file = os.path.join(self.get_output_path(), "%s.json" % full_name)
         if os.path.exists(settings_file):
             with open(settings_file, "rt") as fh:
                 stored_settings = json.load(fh)

@@ -37,7 +37,7 @@ from parametrizations.locations import LocationParametrizationFactory
 from closed_form import closed_form_lambertian_solution
 from losses import LossFunctionFactory
 
-from utils.TOME import depth_reprojection_bound
+from utils.TOME import depth_reprojection_bound, permutohedral_filter
 from utils.vectors import normalize, inner_product
 from utils.logging import error
 from utils.sentinels import OBSERVATION_OUT_OF_BOUNDS, OBSERVATION_MASKED_OUT, OBSERVATION_OCCLUDED, SIMULATION_SHADOWED
@@ -65,13 +65,25 @@ class ExperimentState:
 
     @staticmethod
     def copy(other):
+        new_locations = other.locations.__class__()
+        new_locations.deserialize(*other.locations.serialize())
+        new_normals = other.normals.__class__(new_locations)
+        new_normals.deserialize(*other.normals.serialize())
+        new_brdf = other.brdf.__class__()
+        new_materials = other.materials.__class__(new_brdf)
+        new_materials.deserialize(*other.materials.serialize())
+        new_observation_poses = other.observation_poses.__class__()
+        new_observation_poses.deserialize(*other.observation_poses.serialize())
+        new_lights = other.light_parametrization.__class__()
+        new_lights.deserialize(*other.light_parametrization.serialize())
+
         return ExperimentState(
-            other.locations,
-            other.normals,
-            other.brdf,
-            other.materials,
-            other.observation_poses,
-            other.light_parametrization,
+            new_locations,
+            new_normals,
+            new_brdf,
+            new_materials,
+            new_observation_poses,
+            new_lights,
         )
 
     @staticmethod
@@ -116,6 +128,11 @@ class ExperimentState:
 
         if any(["closed_form" in initialization_settings[entry] for entry in initialization_settings]):
             closed_form_normals, closed_form_diffuse, _, _ = closed_form_lambertian_solution(self, data_adapter)
+            points = self.locations.location_vector()
+            closed_form_normals = permutohedral_filter(
+                closed_form_normals[None], points[None] / 0.003,
+                torch.ones(points.shape[0]).to(points.device), False
+            )[0]
 
         if initialization_settings['diffuse'] == "from_closed_form":
             self.materials.initialize(self.locations.get_point_count(), closed_form_diffuse, self.locations.device())
@@ -441,7 +458,7 @@ class ExperimentState:
             )
 
             # geometry: save a rendered image with normals from depth and a uniform brdf
-            normals = self.normals.normals()
+            estimated_normals = self.normals
             center_view_idx = [
                 i for i, view_info in enumerate(data_adapter.observation_views)
                 if view_info[0] == data_adapter.center_view
@@ -449,6 +466,7 @@ class ExperimentState:
             device = torch.device(general_settings.device_name)
             center_training_idx = torch.tensor([center_view_idx], device=device, dtype=torch.long)
             center_training_light_info = torch.tensor([data_adapter.images[center_view_idx].light_info], device=device, dtype=torch.long)
+            self.normals = NormalParametrizationFactory("hard linked")(self.locations)
             for i in range(1,3):
                 geometry_simulation = self.simulate(
                     center_training_idx,
@@ -467,6 +485,8 @@ class ExperimentState:
                         filler=255
                     ))
                 )
+            self.normals = estimated_normals
+            normals = self.normals.normals()
 
             if general_settings.save_clouds:
                 # depth cloud
@@ -548,23 +568,25 @@ class ExperimentState:
                         [observations, occlusions],
                         self,
                         data_adapter
-                    )
+                    ).sum(dim=-1, keepdim=True)
                 else:
                     photoconsistency_errors = None
+
+                observations[occlusions] = 0.
 
                 os.makedirs(os.path.join(output_path, image_set), exist_ok=True)
                 for set_index, image_index in enumerate(indices):
                     camera_index = data_adapter.observation_views[image_index][0]
 
                     cv2.imwrite(
-                    os.path.join(output_path, image_set, "cam%05d_%s_predicted.png" % (camera_index, set_name)),
+                        os.path.join(output_path, image_set, "cam%05d_%s_predicted.png" % (camera_index, set_name)),
                         to_numpy(self.locations.create_image(
                             simulations[set_index] * general_settings.intensity_scale,
                             filler=255
                         ))
                     )
                     cv2.imwrite(
-                    os.path.join(output_path, image_set, "cam%05d_%s_observed.png" % (camera_index, set_name)),
+                        os.path.join(output_path, image_set, "cam%05d_%s_observed.png" % (camera_index, set_name)),
                         to_numpy(self.locations.create_image(
                             observations[set_index] * general_settings.intensity_scale,
                             filler=255
@@ -591,6 +613,7 @@ class ExperimentState:
             )[0]
             diffuse_image_file = os.path.join(
                 output_path,
+                "fitting_set",
                 "diffuse_component_%s.png" % (set_name)
             )
             cv2.imwrite(
@@ -608,6 +631,7 @@ class ExperimentState:
             )[0]
             specular_image_file = os.path.join(
                 output_path,
+                "fitting_set",
                 "specular_component_%s.png" % (set_name)
             )
             cv2.imwrite(
@@ -651,6 +675,7 @@ class ExperimentState:
         for name, field in self._get_named_fields().items():
             saved_tensors = torch.load(os.path.join(folder, name+".torch"))
             field.deserialize(*saved_tensors if saved_tensors is not None else [None])
+        self.clear_parametrization_caches()
 
     def save(self, folder):
         os.makedirs(folder, exist_ok=True)

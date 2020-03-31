@@ -99,7 +99,11 @@ class PerPointNormals(NormalParametrization):
         }
 
     def serialize(self):
-        return [self.base_normals, self.phis.detach(), self.thetas.detach()]
+        return [
+            self.base_normals.clone(),
+            self.phis.detach().clone(),
+            self.thetas.detach().clone()
+        ]
 
     def deserialize(self, *args):
         base_normals, phis, thetas = args

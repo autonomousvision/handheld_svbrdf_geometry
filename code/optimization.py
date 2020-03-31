@@ -164,6 +164,7 @@ def optimize(experiment_state, data_adapter, optimization_settings, output_path_
                     xvalues.repeat(len(loss_names),1),
                     np.array(loss_values).T
                 )
+                plt.ylim([0.9e3, 1.1e6])
                 plt.legend(loss_names)
                 plt.savefig(output_path_structure % "loss")
 

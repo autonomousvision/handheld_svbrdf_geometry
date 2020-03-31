@@ -316,7 +316,8 @@ class XimeaAdapter(ImageAdapter):
         self.center_view = data_settings['center_view']
 
         center_view_dictionary = torch.load(os.path.join(
-            data_settings['input_path'],
+            data_settings['base_input_path'],
+            data_settings['object_name'],
             "center_views",
             "views.pkl"
         ))["%05d" % self.center_view]
@@ -332,12 +333,14 @@ class XimeaAdapter(ImageAdapter):
         ]
 
         color_dir = os.path.join(
-            data_settings['input_path'],
+            data_settings['base_input_path'],
+            data_settings['object_name'],
             "RGB_undistorted",
         )
 
         depth_dir = os.path.join(
-            data_settings['input_path'],
+            data_settings['base_input_path'],
+            data_settings['object_name'],
             data_settings['depth_folder'],
         )
         device = torch.device(general_settings.device_name)
@@ -412,7 +415,11 @@ class XimeaAdapter(ImageAdapter):
         )
 
         # load the light indices
-        light_indices = np.loadtxt(os.path.join(data_settings['input_path'], 'image2LED.txt')).astype(np.int32)
+        light_indices = np.loadtxt(os.path.join(
+            data_settings['base_input_path'],
+            data_settings['object_name'],
+            'image2LED.txt'
+        )).astype(np.int32)
 
         self.images = [
             ImageWrapper(

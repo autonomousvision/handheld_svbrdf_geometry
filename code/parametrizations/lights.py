@@ -219,7 +219,12 @@ class PointLight(LightParametrization):
         }
 
     def serialize(self):
-        return [self.positions.detach(), self.intensities.detach(), self.attenuations.detach(), self.rig_light]
+        return [
+            self.positions.detach().clone(),
+            self.intensities.detach().clone(),
+            self.attenuations.detach().clone(),
+            self.rig_light
+        ]
 
     def deserialize(self, *args):
         self.positions = torch.nn.Parameter(args[0])

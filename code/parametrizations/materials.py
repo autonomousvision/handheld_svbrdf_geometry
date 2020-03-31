@@ -76,18 +76,18 @@ class MaterialParametrization(Parametrization):
         pass
 
 
-def detach_dict_recursive(dictionary):
+def detach_and_clone_dict_recursive(dictionary):
     """
     Create a new dictionary with the same elements, detached as required.
     The only nested collection that is supported is a dict.
     """
     if not isinstance(dictionary, dict):
-        error("detach_dict_recursive acting on neither a Tensor nor a dict.")
+        error("detach_and_clone_dict_recursive acting on neither a Tensor nor a dict.")
     new_dictionary = dict([
         [
             key,
-            value.detach() if isinstance(value, torch.Tensor)
-            else detach_dict_recursive(value)
+            value.detach().clone() if isinstance(value, torch.Tensor)
+            else detach_and_clone_dict_recursive(value)
         ]
         for key, value in dictionary.items()
     ])
@@ -161,7 +161,7 @@ class BaseSpecularMaterials(MaterialParametrization):
         self.brdf_parametrization.enforce_brdf_parameter_bounds(self.brdf_parameters)
 
     def serialize(self):
-        return self.base_weights.detach(), detach_dict_recursive(self.brdf_parameters)
+        return self.base_weights.detach().clone(), detach_and_clone_dict_recursive(self.brdf_parameters)
     
     def deserialize(self, *args):
         self.base_weights = torch.nn.Parameter(args[0])
