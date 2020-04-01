@@ -274,7 +274,9 @@ def higo_baseline(experiment_state, data_adapter, cache_path, higo_settings):
             max_flow = graph.maxflow()
             print("Finished in %ss" % (time.time() - tic))
             min_cut = graph.get_grid_segments(node_ids)
-            winners_graphcut = np.nonzero(min_cut[:,1:] != min_cut[:,:-1])[1]
+            nonzeroes = np.nonzero(min_cut[:,1:] != min_cut[:,:-1])
+            unique_nonzeroes = np.unique(nonzeroes[0], return_index=True)
+            winners_graphcut = nonzeroes[1][unique_nonzeroes[1]]
             winners_graphcut = winners_graphcut - to_numpy(full_offsets)
             np.savez_compressed(
                 graphcut_cache_file,

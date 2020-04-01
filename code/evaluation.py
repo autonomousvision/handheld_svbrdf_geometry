@@ -153,6 +153,8 @@ def image_based_alignment(mesh_points, mesh_normals, Rt_img, K_img, depth, norma
         if verbose:
             loop.set_description("Performing alignment refinement: loss %12.6f" % loss.item())
 
+    log("Image alignment: depth error %f, normal error %f" % (depth_diffs[valid_depths].mean(), normal_diffs[valid_depths].mean()))
+
     return to_numpy(torch_pose_change.Rts()[0])
 
 def render_depth_normals(vertices, faces, normals, K, camera_pose, image_shape):

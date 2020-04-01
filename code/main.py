@@ -37,16 +37,13 @@ from evaluation import evaluate_state
 
 from utils.logging import error
 
-object_name = 'peter'
-center_view = 1171      #bunny: 180, peter: 1171 or 566
-
 settings_dict_base = {
     'data_settings': {
         'data_type': "XIMEA",
-        'center_view': center_view,
+        'center_view': None,
         'nr_neighbours': 40, 
         'base_input_path': "<input_data_base_folder>/",
-        'object_name': object_name,
+        'object_name': None,
         'base_output_path': "<output_base_folder>/",
         'calibration_path_geometric': "<calibration_base_folder>/geometry/calib-20191002/",
         'vignetting_file': '<calibration_base_folder>/photometric/20190822_vignettes_light_intensities_attenuation/vignetting.npz',
@@ -153,14 +150,14 @@ settings_dict_disjoint = recursive_dict_update(
         },
         'optimization_steps': [
             *(disjoint_iteration * 5),
-            {
-                'iterations': 1000,
-                'parameters': [
-                    'observation_poses',
-                ],
-                'visualize_initial': True,
-                'target_set': "testing",
-            },
+            # {
+            #     'iterations': 1000,
+            #     'parameters': [
+            #         'observation_poses',
+            #     ],
+            #     'visualize_initial': True,
+            #     'target_set': "testing",
+            # },
         ]
     }
 )
@@ -183,13 +180,13 @@ settings_dict_proposed = recursive_dict_update(
                 ],
                 'visualize_initial': True,
             },
-            {
-                'parameters': [
-                    'observation_poses',
-                ],
-                'visualize_initial': True,
-                'target_set': "testing",
-            },
+            # {
+            #     'parameters': [
+            #         'observation_poses',
+            #     ],
+            #     'visualize_initial': True,
+            #     'target_set': "testing",
+            # },
         ]
     }
 )
@@ -252,7 +249,7 @@ def run_experiment(settings_dict):
         experiment_state.save(initialization_state_folder)
         experiment_settings.save("initialization_settings")
 
-    evaluate_state("initialization", experiment_settings.get('data_settings')['object_name'], experiment_state)
+    # evaluate_state("initialization", experiment_settings.get('data_settings')['object_name'], experiment_state)
     experiment_state.visualize_statics(
         experiment_settings.get_output_path(),
         data_adapter
@@ -293,13 +290,13 @@ def run_experiment(settings_dict):
         shorthand = experiment_settings.get_shorthand("optimization_steps", step_index)
         set_name = "%02d_%s" % (step_index, shorthand)
 
-        if optimization_settings['visualize_initial']:
-            experiment_state.visualize(
-                experiment_settings.get_output_path(),
-                "%02d__initial" % step_index,
-                data_adapter,
-                optimization_settings['losses']
-            )
+        # if optimization_settings['visualize_initial']:
+        #     experiment_state.visualize(
+        #         experiment_settings.get_output_path(),
+        #         "%02d__initial" % step_index,
+        #         data_adapter,
+        #         optimization_settings['losses']
+        #     )
 
         if experiment_settings.check_stored("optimization_steps", step_index):
             experiment_state.load(step_state_folder)
@@ -316,16 +313,35 @@ def run_experiment(settings_dict):
             experiment_state.save(step_state_folder)
             experiment_settings.save("optimization_steps", step_index)
 
-        if optimization_settings['visualize_results']:
-            experiment_state.visualize(
-                experiment_settings.get_output_path(),
-                set_name,
-                data_adapter,
-                optimization_settings['losses']
-            )
+        # if optimization_settings['visualize_results']:
+        #     experiment_state.visualize(
+        #         experiment_settings.get_output_path(),
+        #         set_name,
+        #         data_adapter,
+        #         optimization_settings['losses']
+        #     )
     evaluate_state(experiment_settings.get('data_settings').get('output_path_suffix', 'proposed'), experiment_settings.get('data_settings')['object_name'], experiment_state)
 
 if __name__ == "__main__":
-    run_experiment(settings_dict_higo)
-    run_experiment(settings_dict_disjoint)
-    run_experiment(settings_dict_proposed)
+    for object_name, center_view in [
+        # ("peter",         1171),
+        # ("peter",          566),
+        # ("teapot",         451),
+        # ("teapot",         999),
+        # ("gnome",          308),
+        # ("gnome",          488),
+        # ("girl",           882),
+        # ("girl",          1059),
+        ("duck",           826),
+        # ("duck",            49),
+        # ("fire_hydrant",   582),
+        # ("fire_hydrant",   704),
+        # ("pineapple",      401),
+        # ("pineapple",      536),
+        # ("bunny",          670),
+        # ("bunny",          180),
+    ]:
+        for settings_dict in [settings_dict_higo, settings_dict_disjoint, settings_dict_proposed]:
+            settings_dict['data_settings']['object_name'] = object_name
+            settings_dict['data_settings']['center_view'] = center_view
+            run_experiment(settings_dict)
