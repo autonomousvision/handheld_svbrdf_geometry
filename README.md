@@ -45,12 +45,13 @@ It takes care of all of the installation requirements.
 ## Sensor data
 
 We provide two options to download our sensor data: You can either download the data for only one object or the data of all 9 objects that are shown in the publication.
-Choose between 'data_single.zip' and 'data.zip' and download the pre-processed captures via
+At the moment, the data of only one object is uploaded but the rest will be added soon!
+Download the pre-processed captures via
 
     mkdir data
     cd data/
-    wget https://s3.eu-central-1.amazonaws.com/avg-projects/handheld_svbrdf_geometry/<data/data_single>.zip
-    unzip <data/data_single>.zip
+    wget https://s3.eu-central-1.amazonaws.com/avg-projects/handheld_svbrdf_geometry/data_single.zip
+    unzip data_single.zip
 
 
 
