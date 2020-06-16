@@ -3,14 +3,9 @@
 
 #### [Project Page](https://avg.is.tuebingen.mpg.de/publications/schmitt2020cvpr) | [Paper](http://www.cvlibs.net/publications/Schmitt2020CVPR.pdf) | [Spotlight Video](https://www.youtube.com/watch?v=_xxSQPD9qU0) | [Presentation](http://www.cvlibs.net/publications/Schmitt2020CVPR_slides.pdf) | [Poster](http://www.cvlibs.net/publications/Schmitt2020CVPR_poster.pdf)
 
-<div style="text-align: center">
-<img src="teaser.png" width="128"/>
-</div>
+![teaser](teaser.png)
 
-
-This is the source code repository for our CVPR publication:
-
-    [On Joint Estimation of Pose, Geometry and svBRDF from a Handheld Scanner](http://www.cvlibs.net/publications/Schmitt2020CVPR.pdf)
+This is the source code repository for our CVPR publication [On Joint Estimation of Pose, Geometry and svBRDF from a Handheld Scanner](http://www.cvlibs.net/publications/Schmitt2020CVPR.pdf).
 
 By Carolin Schmitt, Simon Donné, Gernot Riegler, Vladlen Koltun and Andreas Geiger.
 
@@ -34,7 +29,7 @@ To use it first make sure that you have a working installation of conda: <https:
 
 Next, please check the CUDA version of your system with
 
-    'which nvcc'
+    which nvcc
 
 By default, the script compiles Pytorch 1.4 for CUDA 10.0.
 But this can easily be changed in 'installEnv.sh':
@@ -42,7 +37,7 @@ In line 69 change the 'cudatoolkit=10.0' to the CUDA version of your system.
 
 Then run the script via
 
-    `./installEnv.sh`
+    ./installEnv.sh
 
 It takes care of all of the installation requirements.
 
@@ -52,10 +47,10 @@ It takes care of all of the installation requirements.
 We provide two options to download our sensor data: You can either download the data for only one object or the data of all 9 objects that are shown in the publication.
 Choose between 'data_single.zip' and 'data.zip' and download the pre-processed captures via
 
-    'mkdir data'
-    'cd data/'
-    'wget https://s3.eu-central-1.amazonaws.com/avg-projects/handheld_svbrdf_geometry/<data/data_single>.zip'
-    'unzip <data/data_single>.zip'
+    mkdir data
+    cd data/
+    wget https://s3.eu-central-1.amazonaws.com/avg-projects/handheld_svbrdf_geometry/<data/data_single>.zip
+    unzip <data/data_single>.zip
 
 
 
@@ -71,12 +66,12 @@ At the end of 'main.py' you can specify for which object and which center_view y
 
 Make sure that the conda environment is activated and you are in the correct folder:
 
-    'conda activate handheld_svbrdf_geometry'
-    'cd code/'
+    conda activate handheld_svbrdf_geometry
+    cd code/
 
 Then run
 
-    'python main.py'.
+    python main.py
 
 
 ### Evaluation
