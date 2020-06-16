@@ -22,38 +22,24 @@ If you find our code or paper useful, please consider citing
 
 ## Installation
 
-After cloning this repository, you will need to make sure that all dependencies are in place.
-The easiest way to do so is to use our installation script that sets up a conda environment and installs all required packages for you.
+We provide the installEnv.sh script for provisioning the dependencies of this repository.
+A working version of both conda (<https://conda.io/>) and CUDA is required.
 
-To use it first make sure that you have a working installation of conda: <https://conda.io/>.
-
-Next, please check the CUDA version of your system with
+By default, the script uses Pytorch 1.4 compiled with CUDA 10.0, but this can easily be changed in 'installEnv.sh'.
+In line 69 change the 'cudatoolkit=10.0' to the CUDA version of your system. This can be checked with:
 
     which nvcc
 
-By default, the script compiles Pytorch 1.4 for CUDA 10.0.
-But this can easily be changed in 'installEnv.sh':
-In line 69 change the 'cudatoolkit=10.0' to the CUDA version of your system.
-
-Then run the script via
-
-    ./installEnv.sh
-
-It takes care of all of the installation requirements.
-
-
 ## Sensor data
 
-We provide two options to download our sensor data: You can either download the data for only one object or the data of all 9 objects that are shown in the publication.
-At the moment, the data of only one object is uploaded but the rest will be added soon!
+You will be able to download sensor data both for either invidivual objects and for the entire dataset from the paper.
+At the moment, only one object is available, but we work on uploading the rest soon.
 Download the pre-processed captures via
 
     mkdir data
     cd data/
     wget https://s3.eu-central-1.amazonaws.com/avg-projects/handheld_svbrdf_geometry/data_single.zip
     unzip data_single.zip
-
-
 
 ## Run the method
 
@@ -74,11 +60,13 @@ Then run
 
     python main.py
 
+When evaluating on a headless server, specify egl as the platform for pyrender:
+
+    PYOPENGL_PLATFORM=egl python main.py
 
 ### Evaluation
 
-Prior to releasing this code, we refactored the full repository.
-We observe that the quantitative results we are getting now are slightly different than the results reported in the paper.
-Since this occurs consistently over all baselines, most likely only the evaluation code changed slightly.
-We are working on resolving it but note that the results still support all our findings in the publication.
+The code in this repository produces slightly different results than the ones reported in the paper, as it was refactored for release.
+Since this occurs consistently over all baselines, we expect the evaluation code is responsible for these changes.
+We are working on resolving it, but we note that the results still support all our findings in the publication.
 
