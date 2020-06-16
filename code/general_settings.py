@@ -48,7 +48,8 @@ batch_size = 20
 
 # localization translation dictionary for settings
 path_localization = {
-    "<input_data_base_folder>": "/is/rg/avg/projects/mobile_lightstage/captures/20191029_benchmark_objects_dense",
-    "<output_base_folder>": "/tmp/sdonne/BRDF_refactoring",
-    "<calibration_base_folder>": "/is/rg/avg/projects/mobile_lightstage/calibration"
+    "<input_data_base_folder>": "../data/captures",
+    "<output_base_folder>": "../output",
+    "<calibration_base_folder>": "../data/calibration",
+    "<gt_scan_folder>": "../data/gt_scans"
 }

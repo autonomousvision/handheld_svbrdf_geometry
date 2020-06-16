@@ -20,8 +20,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+
 set -e # exit on error rather than trying to continue
-conda_env_name="BRDF"
+conda_env_name="handheld_svbrdf_geometry"
+
 
 # testing whether conda is available
 echo -n "Ensuring conda is available...   "
@@ -33,9 +35,12 @@ else
 fi
 echo ""
 
+
 # test whether the conda environment already exists, create it if it doesn't
 echo "Ensuring conda environment '$conda_env_name' is available... "
 echo "If code is not running, always double check whether you have activated it."
+
+
 # create a conda environment
 if conda info --env | grep -w "$conda_env_name" >/dev/null; then
     echo "Already exists."
@@ -45,6 +50,7 @@ else    # if the env does not exist.
     echo "Created successfully."
 fi
 echo ""
+
 
 # activate the conda environment
 CONDA_BASE=$(conda info --base)
@@ -57,66 +63,40 @@ else
 fi
 echo ""
 
-# test for the various packages and conda install them as required
-if conda list | grep -w "pytorch" | grep "1.4" >/dev/null; then
-    echo "PyTorch 1.4      > Already installed"
-else
-    echo "PyTorch 1.4      > Installing now (may take a while)..."
-    conda install pytorch=1.4 torchvision cudatoolkit -c pytorch --yes
-fi
-if conda list | grep -w "tqdm" >/dev/null; then
-    echo "TQDM             > Already installed"
-else
-    echo "TQDM             > Installing now (may take a while)..."
-    conda install -c conda-forge tqdm --yes
-fi
-if conda list | grep -w "scipy" >/dev/null; then
-    echo "Scipy            > Already installed"
-else
-    echo "Scipy            > Installing now (may take a while)..."
-    conda install -c anaconda scipy --yes
-fi
-if conda list | grep -w "scikit-image" >/dev/null; then
-    echo "Skimage          > Already installed"
-else
-    echo "Skimage          > Installing now (may take a while)..."
-    conda install -c anaconda scikit-image --yes
-fi
-if conda list | grep -w "matplotlib" >/dev/null; then
-    echo "Matplotlib       > Already installed"
-else
-    echo "Matplotlib       > Installing now (may take a while)..."
-    conda install -c conda-forge matplotlib --yes
-fi
-if pip list | grep -w "opencv" >/dev/null; then
-    echo "OpenCV           > Already installed"
-else
-    echo "OpenCV           > Installing now (may take a while)..."
-    pip install opencv-python
-fi
-if pip list | grep -w "pymaxflow" >/dev/null; then
-    echo "PyMaxFlow        > Already installed"
-else
-    echo "PyMaxFlow        > Installing now (may take a while)..."
-    pip install pymaxflow
-fi
-if pip list | grep -w "open3d" >/dev/null; then
-    echo "Open3D           > Already installed"
-else
-    echo "Open3D           > Installing now (may take a while)..."
-    pip install open3d
-fi
-echo "Pyrender         > Ensuring requirements"
+
+# conda install the required packages
+echo "\n-------------------------\nInstalling PyTorch 1.4 \n-------------------------"
+conda install pytorch=1.4 torchvision cudatoolkit=10.0 -c pytorch --yes
+
+echo "\n-------------------------\nInstalling TQDM \n-------------------------"
+conda install -c conda-forge tqdm --yes
+
+echo "\n-------------------------\nInstalling Scipy \n-------------------------"
+conda install -c anaconda scipy --yes
+
+echo "\n-------------------------\nInstalling Skimage \n-------------------------"
+conda install -c anaconda scikit-image --yes
+
+echo "\n-------------------------\nInstalling Matplotlib \n-------------------------"
+conda install -c conda-forge matplotlib --yes
+
+echo "\n-------------------------\nInstalling OpenCV \n-------------------------"
+pip install opencv-python
+
+echo "\n-------------------------\nInstalling PyMaxFlow \n-------------------------"
+pip install pymaxflow
+
+echo "\n-------------------------\nInstalling Open3D \n-------------------------"
+pip install open3d
+
+echo "\n-------------------------\nEnsuring requirements for Pyrender \n-------------------------"
 pip install -r code/thirdparty/pyrender/requirements.txt >/dev/null
 
 
 # compile the CUDA parts written for this repository
-if test "$(find code/utils/TOME/ -maxdepth 1 -name '_implementation.*.so' -print -quit)";  then
-    echo "TOME CUDA parts   > Already compiled"
-else
-    echo "TOME CUDA parts   > Compiling now..."
-    cd code/utils/TOME
-    python setup.py build_ext --inplace
-    cd -
-fi
-echo ""
+echo "\n-------------------------\nCompiling TOME CUDA parts \n-------------------------"
+cd code/utils/TOME
+python setup.py build_ext --inplace
+cd -
+
+echo "\n\nFinished installing all required packages in the conda environment 'handheld_svbrdf_geometry'."

@@ -34,7 +34,6 @@ from parametrizations.poses import PoseParametrizationFactory
 from utils.logging import error, log
 from utils.conversion import to_numpy, to_o3d, to_torch
 
-gt_scan_folder = "/is/rg/avg/projects/mobile_lightstage/simon_scans"
 
 def refine_registration(target, source, distance_threshold, Tinit=np.eye(4)):
     """
@@ -199,15 +198,15 @@ def render_depth_normals(vertices, faces, normals, K, camera_pose, image_shape):
     normals = normals / (np.linalg.norm(normals, axis=2, keepdims=True) + invalids)
     return normals, depth
 
-def evaluate_state(evaluation_name, object_name, experiment_state):
+def evaluate_state(evaluation_name, object_name, gt_scan_folder, experiment_state):
     """
     Evaluate the current experiment_state with the relevant ground truth.
     Performs registration refinement on the point clouds, and then calculates
     average geometric accuracy and normal angle (in the image domain).
     """
-    gt_scan_file = os.path.join(gt_scan_folder, "manual_scan_alignment", "%s_manual.ply" % object_name)
+    gt_scan_file = os.path.join(gt_scan_folder, "%s_manual.ply" % object_name)
     if not os.path.exists(gt_scan_file):
-        error("WARNING> GT scan for %s not available" % object_name)
+        error("WARNING> GT scan for %s not available: \n\t%s" % (object_name, gt_scan_file))
 
     gt_scan_mesh = o3d.io.read_triangle_mesh(gt_scan_file) # stored in m
     gt_scan = gt_scan_mesh.sample_points_uniformly(int(1e6)) # objects covering 1m^2, that's 1mm^2 per point

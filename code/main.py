@@ -45,8 +45,9 @@ settings_dict_base = {
         'base_input_path': "<input_data_base_folder>/",
         'object_name': None,
         'base_output_path': "<output_base_folder>/",
-        'calibration_path_geometric': "<calibration_base_folder>/geometry/calib-20191002/",
-        'vignetting_file': '<calibration_base_folder>/photometric/20190822_vignettes_light_intensities_attenuation/vignetting.npz',
+        'gt_scan_folder': "<gt_scan_folder>/",
+        'calibration_path_geometric': "<calibration_base_folder>/geometric/",
+        'vignetting_file': '<calibration_base_folder>/photometric/vignetting.npz',
         'depth_folder': 'tsdf-fusion-depth_oldCV_40_views',
         'center_stride': 2,
         'depth_scale': 1e-3,
@@ -70,9 +71,9 @@ settings_dict_base = {
         'specular': 'hardcoded',
         'lights': 'precalibrated',
         'light_calibration_files': {
-            "positions": "<calibration_base_folder>/photometric/20190717_light_locations/lights_array.pkl",
-            "intensities": "<calibration_base_folder>/photometric/20190822_vignettes_light_intensities_attenuation/LED_light_intensities.npy",
-            "attenuations": "<calibration_base_folder>/photometric/20190822_vignettes_light_intensities_attenuation/LED_angular_dependency.npy",
+            "positions": "<calibration_base_folder>/photometric/lights_array.pkl",
+            "intensities": "<calibration_base_folder>/photometric/LED_light_intensities.npy",
+            "attenuations": "<calibration_base_folder>/photometric/LED_angular_dependency.npy",
         }
     },
     'default_optimization_settings': {
@@ -249,7 +250,10 @@ def run_experiment(settings_dict):
         experiment_state.save(initialization_state_folder)
         experiment_settings.save("initialization_settings")
 
-    # evaluate_state("initialization", experiment_settings.get('data_settings')['object_name'], experiment_state)
+    # evaluate_state("initialization",
+    #                experiment_settings.get('data_settings')['object_name'],
+    #                experiment_settings.get('local_data_settings')['gt_scan_folder'],
+    #                experiment_state)
     experiment_state.visualize_statics(
         experiment_settings.get_output_path(),
         data_adapter
@@ -276,7 +280,10 @@ def run_experiment(settings_dict):
         else:
             higo_experiment_state = ExperimentState.copy(experiment_state)
             higo_experiment_state.load(higo_state_folder)
-        evaluate_state("higo baseline", experiment_settings.get('data_settings')['object_name'], higo_experiment_state)
+        evaluate_state("higo baseline",
+                       experiment_settings.get('data_settings')['object_name'],
+                       experiment_settings.get('local_data_settings')['gt_scan_folder'],
+                       higo_experiment_state)
 
     optimization_step_settings = experiment_settings.get('default_optimization_settings')
     experiment_settings.check_stored("default_optimization_settings")
@@ -290,13 +297,13 @@ def run_experiment(settings_dict):
         shorthand = experiment_settings.get_shorthand("optimization_steps", step_index)
         set_name = "%02d_%s" % (step_index, shorthand)
 
-        # if optimization_settings['visualize_initial']:
-        #     experiment_state.visualize(
-        #         experiment_settings.get_output_path(),
-        #         "%02d__initial" % step_index,
-        #         data_adapter,
-        #         optimization_settings['losses']
-        #     )
+        if optimization_settings['visualize_initial']:
+            experiment_state.visualize(
+                experiment_settings.get_output_path(),
+                "%02d__initial" % step_index,
+                data_adapter,
+                optimization_settings['losses']
+            )
 
         if experiment_settings.check_stored("optimization_steps", step_index):
             experiment_state.load(step_state_folder)
@@ -313,14 +320,18 @@ def run_experiment(settings_dict):
             experiment_state.save(step_state_folder)
             experiment_settings.save("optimization_steps", step_index)
 
-        # if optimization_settings['visualize_results']:
-        #     experiment_state.visualize(
-        #         experiment_settings.get_output_path(),
-        #         set_name,
-        #         data_adapter,
-        #         optimization_settings['losses']
-        #     )
-    evaluate_state(experiment_settings.get('data_settings').get('output_path_suffix', 'proposed'), experiment_settings.get('data_settings')['object_name'], experiment_state)
+        if optimization_settings['visualize_results']:
+            experiment_state.visualize(
+                experiment_settings.get_output_path(),
+                set_name,
+                data_adapter,
+                optimization_settings['losses']
+            )
+
+    evaluate_state(experiment_settings.get('data_settings').get('output_path_suffix', 'proposed'),
+                   experiment_settings.get('data_settings')['object_name'],
+                   experiment_settings.get('local_data_settings')['gt_scan_folder'],
+                   experiment_state)
 
 if __name__ == "__main__":
     for object_name, center_view in [
@@ -341,7 +352,8 @@ if __name__ == "__main__":
         # ("bunny",          670),
         # ("bunny",          180),
     ]:
-        for settings_dict in [settings_dict_higo, settings_dict_disjoint, settings_dict_proposed]:
+        for settings_dict in [settings_dict_proposed, settings_dict_higo, settings_dict_disjoint]:
             settings_dict['data_settings']['object_name'] = object_name
             settings_dict['data_settings']['center_view'] = center_view
             run_experiment(settings_dict)
+
