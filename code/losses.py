@@ -106,7 +106,9 @@ class MaterialWeightSmoothnessLoss(LossFunction):
     def evaluate(self, simulations, observations, experiment_state, data_adapter):
         if not hasattr(experiment_state.materials, "base_weights"):
             error("Calculating weight smoothness on a material representation that doesn't have weights")
-
+		
+	# Note that this does not match perfectly with the paper description.
+	# Please see here: https://github.com/autonomousvision/handheld_svbrdf_geometry/issues/2
         N = experiment_state.locations.get_point_count()
         locations = experiment_state.locations.location_vector()             # Nx3
         albedo = experiment_state.materials.get_brdf_parameters()['diffuse'] # Nx3
